@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "localai-server"
+version = "0.1.0"
+description = "Multimodal inference API for LocalAI"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "LocalAI Team" }]
+license = { text = "MIT" }
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic>=2",
+    "httpx",
+    "python-dotenv",
+]
+
+[project.urls]
+Homepage = "https://example.com/localai-server"
