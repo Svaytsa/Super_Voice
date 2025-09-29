@@ -1,12 +1,7 @@
-"""FastAPI routers for LocalAI server."""
+"""Router registrations for the LocalAI application."""
 
-from . import images, llm, stt, tts, videos, vlm
+from fastapi import APIRouter
 
-__all__ = [
-    "images",
-    "llm",
-    "stt",
-    "tts",
-    "videos",
-    "vlm",
-]
+api_router = APIRouter()
+
+__all__ = ["api_router"]
