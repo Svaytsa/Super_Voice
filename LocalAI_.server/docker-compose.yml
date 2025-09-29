@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  localai:
+    image: localai/localai:latest
+    container_name: localai
+    init: true
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LLM_MODEL_ID: ${LLM_MODEL_ID}
+      STT_MODEL_ID: ${STT_MODEL_ID}
+      TTS_MODEL_ID: ${TTS_MODEL_ID}
+      TXT2IMG_MODEL_ID: ${TXT2IMG_MODEL_ID}
+      IMG2IMG_MODEL_ID: ${IMG2IMG_MODEL_ID}
+      TXT2VID_MODEL_ID: ${TXT2VID_MODEL_ID}
+      IMG2VID_MODEL_ID: ${IMG2VID_MODEL_ID}
+      VLM_IMG2TXT_MODEL_ID: ${VLM_IMG2TXT_MODEL_ID}
+      VLM_VID2TXT_MODEL_ID: ${VLM_VID2TXT_MODEL_ID}
+      ENABLE_CUDA: ${ENABLE_CUDA:-0}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - ./data/models:/models
+      - ./data/tmp:/tmp
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    runtime: ${ENABLE_CUDA:+nvidia}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${ENABLE_CUDA:-0}
+              capabilities: ["gpu"]
