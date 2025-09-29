@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.dylib
+
+# Environments
+.env
+.env.local
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Tooling
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Models and artifacts
+models/
