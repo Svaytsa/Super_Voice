@@ -8,12 +8,14 @@
 #include <cerrno>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <set>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -123,6 +125,18 @@ public:
         entry.ttl = chunk.ttl.count() > 0 ? chunk.ttl
                                           : std::chrono::seconds{default_ttl_rep_.load()};
         entry.state = entry.received.size() == entry.record.total_chunks ? "complete" : "partial";
+
+        const auto received_chunks = entry.received.size();
+        const auto total_chunks = entry.record.total_chunks;
+        const double completeness = total_chunks > 0
+                                         ? (static_cast<double>(received_chunks) / static_cast<double>(total_chunks)) *
+                                               100.0
+                                         : 0.0;
+        std::ostringstream completeness_stream;
+        completeness_stream << std::fixed << std::setprecision(1) << completeness;
+        std::clog << "[storage] chunk stored file=" << chunk.file_id << " index=" << chunk.index << '/' << total_chunks
+                  << " size=" << chunk.payload.size() << "B completeness=" << received_chunks << '/'
+                  << total_chunks << " (" << completeness_stream.str() << "%)" << '\n';
 
         persist_manifest(entry.record, entry);
 

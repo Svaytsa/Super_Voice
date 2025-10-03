@@ -366,6 +366,10 @@ int main(int argc, char** argv)
                                                           received += bytes;
                                                       }
 
+                                                      std::clog << "[data] patch received file=" << chunk.file_id << " index="
+                                                                << chunk.index << '/' << chunk.total_chunks
+                                                                << " size=" << payload_size << "B" << '\n';
+
                                                       metrics.chunks.fetch_add(1);
                                                       if (auto record = storage.store_chunk(chunk))
                                                       {
@@ -407,8 +411,10 @@ int main(int argc, char** argv)
         while (g_running.load())
         {
             std::this_thread::sleep_for(std::chrono::seconds{30});
+            const auto ttl_value = std::chrono::seconds{ttl_seconds.load()};
+            std::clog << "[cleanup] sweep ttl=" << ttl_value.count() << "s" << '\n';
             storage.cleanup_expired(std::chrono::system_clock::now());
-            cleanup_completed_files(storage.files_dir(), std::chrono::seconds{ttl_seconds.load()});
+            cleanup_completed_files(storage.files_dir(), ttl_value);
         }
     });
 
