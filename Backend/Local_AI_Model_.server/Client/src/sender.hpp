@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <exception>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -182,28 +183,43 @@ private:
             return buffer;
         }
 
-        void send_chunk(const FileChunk& chunk)
+        struct SendResult
+        {
+            bool success{false};
+            std::size_t attempts{0};
+            std::string last_error;
+        };
+
+        SendResult send_chunk(const FileChunk& chunk)
         {
             const auto payload = serialize(chunk);
-            std::size_t attempt = 0;
-            while (attempt < max_send_retries)
+            const auto max_attempts = std::max<std::size_t>(std::size_t{1}, max_send_retries);
+            SendResult result{};
+
+            for (std::size_t attempt = 0; attempt < max_attempts; ++attempt)
             {
+                result.attempts = attempt + 1;
                 try
                 {
                     auto& socket = ensure_connected();
                     asio::write(socket, asio::buffer(payload));
-                    return;
+                    result.success = true;
+                    return result;
                 }
-                catch (const std::exception&)
+                catch (const std::exception& ex)
                 {
                     close();
-                    ++attempt;
-                    if (attempt >= max_send_retries)
+                    result.last_error = ex.what();
+                    if (attempt + 1 < max_attempts)
                     {
-                        throw;
+                        std::clog << "[sender] retry chunk " << chunk.descriptor.path
+                                  << " (#" << chunk.index << "/" << chunk.total_chunks << ") via " << host << ':'
+                                  << port << " attempt=" << (attempt + 1) << " reason=" << ex.what() << std::endl;
                     }
                 }
             }
+
+            return result;
         }
 
         bool is_open() const
@@ -244,6 +260,12 @@ private:
     void run(std::stop_token stop_token)
     {
         channels_.notify_control(options_.connections, active_connections());
+        auto window_start = std::chrono::steady_clock::now();
+        std::size_t window_chunks = 0;
+        std::size_t window_bytes = 0;
+        std::size_t window_retries = 0;
+        const auto metrics_interval = std::chrono::seconds{5};
+
         while (!stop_token.stop_requested())
         {
             auto chunk = queue_.pop();
@@ -257,26 +279,67 @@ private:
             }
 
             bool sent = false;
+            std::size_t chunk_retries = 0;
+            std::string last_error;
             try
             {
                 Connection& connection = next_connection();
-                connection.send_chunk(*chunk);
-                sent = true;
+                auto result = connection.send_chunk(*chunk);
+                chunk_retries = result.attempts > 0 ? result.attempts - 1 : 0;
+                if (result.success)
+                {
+                    sent = true;
+                }
+                else
+                {
+                    last_error = result.last_error;
+                }
             }
             catch (const std::exception& ex)
             {
-                std::cerr << "[sender] failed to send chunk: " << ex.what() << std::endl;
+                last_error = ex.what();
             }
 
             if (sent)
             {
                 channels_.notify_control(options_.connections, active_connections());
+                window_chunks += 1;
+                window_bytes += chunk->payload.size();
+                window_retries += chunk_retries;
+
                 std::cout << "[sender] chunk sent: " << chunk->descriptor.path << " (#" << chunk->index << "/"
-                          << chunk->total_chunks << ")" << std::endl;
+                          << chunk->total_chunks << ") attempts=" << (chunk_retries + 1) << std::endl;
             }
             else
             {
-                std::cerr << "[sender] dropping chunk for " << chunk->descriptor.path << " after retries" << std::endl;
+                window_retries += chunk_retries;
+                std::cerr << "[sender] dropping chunk for " << chunk->descriptor.path << " after retries";
+                if (!last_error.empty())
+                {
+                    std::cerr << " reason=" << last_error;
+                }
+                std::cerr << std::endl;
+            }
+
+            const auto now = std::chrono::steady_clock::now();
+            if (now - window_start >= metrics_interval)
+            {
+                const double seconds = std::chrono::duration<double>(now - window_start).count();
+                const double chunk_rate = seconds > 0 ? static_cast<double>(window_chunks) / seconds : 0.0;
+                const double mb_rate = seconds > 0
+                                            ? (static_cast<double>(window_bytes) / (1024.0 * 1024.0)) / seconds
+                                            : 0.0;
+
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(2);
+                oss << "[metrics] queue=" << queue_.size() << '/' << queue_.capacity() << " chunk_rate="
+                    << chunk_rate << "/s mb_rate=" << mb_rate << " retries=" << window_retries;
+                std::cout << oss.str() << std::endl;
+
+                window_start = now;
+                window_chunks = 0;
+                window_bytes = 0;
+                window_retries = 0;
             }
         }
     }

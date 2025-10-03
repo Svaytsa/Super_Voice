@@ -25,7 +25,7 @@ struct SystemChannelOptions
 {
     std::string host{"127.0.0.1"};
     std::uint16_t port{7000};
-    std::chrono::milliseconds queue_update_period{std::chrono::milliseconds{3000}};
+    std::chrono::milliseconds queue_update_period{std::chrono::milliseconds{500}};
 };
 
 class SystemChannels
@@ -78,6 +78,11 @@ public:
     void set_queue_size_provider(std::function<std::size_t()> provider)
     {
         queue_size_provider_ = std::move(provider);
+    }
+
+    void set_queue_capacity_provider(std::function<std::size_t()> provider)
+    {
+        queue_capacity_provider_ = std::move(provider);
     }
 
     void notify_file_chunk_enqueued(const FileChunk& chunk, std::size_t queue_size)
@@ -178,7 +183,12 @@ private:
             {
                 const auto size = queue_size_provider_();
                 std::ostringstream oss;
-                oss << R"({"type":"QUEUE_SIZE_UPDATE","size":)" << size << '}';
+                oss << R"({"type":"QUEUE_SIZE_UPDATE","size":)" << size;
+                if (queue_capacity_provider_)
+                {
+                    oss << R"(,"capacity":)" << queue_capacity_provider_();
+                }
+                oss << '}';
                 send_message(oss.str());
             }
             if (options_.queue_update_period.count() <= 0)
@@ -196,6 +206,7 @@ private:
     std::mutex socket_mutex_{};
 
     std::function<std::size_t()> queue_size_provider_{};
+    std::function<std::size_t()> queue_capacity_provider_{};
     std::jthread queue_thread_{};
     std::mutex meta_mutex_{};
     std::unordered_set<std::string> published_meta_{};

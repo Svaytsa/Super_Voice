@@ -205,50 +205,87 @@ public:
             throw std::runtime_error("Failed to open file for compression: " + descriptor.path.string());
         }
 
-        Sha256 sha;
-        std::vector<std::uint8_t> input;
-        input.reserve(static_cast<std::size_t>(descriptor.size));
+        // Increase the size of the underlying stream buffer to reduce syscalls when reading large files.
+        std::vector<char> file_buffer(1 << 16);
+        file.rdbuf()->pubsetbuf(file_buffer.data(), static_cast<std::streamsize>(file_buffer.size()));
 
-        std::array<char, 8192> buffer{};
-        while (file)
+        Sha256 sha;
+
+        ZSTD_CStream* stream = ZSTD_createCStream();
+        if (!stream)
         {
-            file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+            throw std::runtime_error("Failed to create ZSTD_CStream");
+        }
+
+        const size_t init_result = ZSTD_initCStream(stream, compression_level_);
+        if (ZSTD_isError(init_result))
+        {
+            ZSTD_freeCStream(stream);
+            throw std::runtime_error(std::string{"ZSTD_initCStream failed: "} + ZSTD_getErrorName(init_result));
+        }
+
+        std::vector<std::uint8_t> compressed;
+        compressed.reserve(static_cast<std::size_t>(descriptor.size / 2 + 1'024));
+
+        std::array<char, 1 << 15> input_buffer{};
+        std::array<char, 1 << 15> output_buffer{};
+
+        while (file.good())
+        {
+            file.read(input_buffer.data(), static_cast<std::streamsize>(input_buffer.size()));
             const auto read = static_cast<std::size_t>(file.gcount());
+
+            if (read > 0)
+            {
+                sha.update(input_buffer.data(), read);
+            }
+
+            ZSTD_inBuffer in{input_buffer.data(), read, 0};
+            while (in.pos < in.size())
+            {
+                ZSTD_outBuffer out{output_buffer.data(), output_buffer.size(), 0};
+                const auto remaining = ZSTD_compressStream2(stream, &out, &in, ZSTD_e_continue);
+                if (ZSTD_isError(remaining))
+                {
+                    ZSTD_freeCStream(stream);
+                    throw std::runtime_error(std::string{"ZSTD_compressStream2 failed: "} +
+                                             ZSTD_getErrorName(remaining));
+                }
+                const auto* begin = reinterpret_cast<const std::uint8_t*>(output_buffer.data());
+                compressed.insert(compressed.end(), begin, begin + static_cast<std::ptrdiff_t>(out.pos));
+            }
+
             if (read == 0)
             {
                 break;
             }
-            sha.update(buffer.data(), read);
-            input.insert(input.end(), buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(read));
         }
+
+        if (!file.eof() && file.fail())
+        {
+            ZSTD_freeCStream(stream);
+            throw std::runtime_error("Failed while reading file for compression: " + descriptor.path.string());
+        }
+
+        ZSTD_inBuffer empty_in{nullptr, 0, 0};
+        std::size_t remaining = 0;
+        do
+        {
+            ZSTD_outBuffer out{output_buffer.data(), output_buffer.size(), 0};
+            remaining = ZSTD_compressStream2(stream, &out, &empty_in, ZSTD_e_end);
+            if (ZSTD_isError(remaining))
+            {
+                ZSTD_freeCStream(stream);
+                throw std::runtime_error(std::string{"ZSTD_compressStream2 final flush failed: "} +
+                                         ZSTD_getErrorName(remaining));
+            }
+            const auto* begin = reinterpret_cast<const std::uint8_t*>(output_buffer.data());
+            compressed.insert(compressed.end(), begin, begin + static_cast<std::ptrdiff_t>(out.pos));
+        } while (remaining != 0);
+
+        ZSTD_freeCStream(stream);
 
         const auto digest = sha.finalize();
-
-        ZSTD_CCtx* context = ZSTD_createCCtx();
-        if (context == nullptr)
-        {
-            throw std::runtime_error("Failed to create ZSTD_CCtx");
-        }
-
-        ZSTD_CCtx_setParameter(context, ZSTD_c_compressionLevel, compression_level_);
-
-        const auto bound = ZSTD_compressBound(input.size());
-        std::vector<std::uint8_t> compressed(bound);
-
-        const auto result = ZSTD_compress2(context,
-                                           compressed.data(),
-                                           compressed.size(),
-                                           input.data(),
-                                           input.size());
-
-        ZSTD_freeCCtx(context);
-
-        if (ZSTD_isError(result))
-        {
-            throw std::runtime_error(std::string{"ZSTD_compress2 failed: "} + ZSTD_getErrorName(result));
-        }
-
-        compressed.resize(result);
 
         CompressedFile output{};
         output.descriptor = descriptor;

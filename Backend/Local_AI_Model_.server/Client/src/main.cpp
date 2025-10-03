@@ -38,7 +38,7 @@ struct ClientConfig
     std::size_t max_connect_attempts{3};
     std::chrono::milliseconds connect_retry_delay{std::chrono::milliseconds{500}};
     bool tcp_no_delay{true};
-    std::chrono::milliseconds queue_update_period{std::chrono::milliseconds{3000}};
+    std::chrono::milliseconds queue_update_period{std::chrono::milliseconds{500}};
     std::string control_host{"127.0.0.1"};
     std::uint16_t control_port{7000};
 };
@@ -202,6 +202,7 @@ int main(int argc, char** argv)
 
     sv::client::SystemChannels system_channels{system_options};
     system_channels.set_queue_size_provider([&queue] { return queue.size(); });
+    system_channels.set_queue_capacity_provider([&queue] { return queue.capacity(); });
     system_channels.start();
 
     sv::client::SenderOptions sender_options{};
