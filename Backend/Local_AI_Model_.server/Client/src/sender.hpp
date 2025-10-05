@@ -5,8 +5,10 @@
 #include "system_channels.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <exception>
+#include <future>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -84,6 +86,14 @@ public:
             worker_.request_stop();
             worker_.join();
         }
+
+        for (auto& connection : connections_)
+        {
+            if (connection)
+            {
+                connection->stop();
+            }
+        }
     }
 
 private:
@@ -98,6 +108,10 @@ private:
         std::chrono::milliseconds reconnect_delay{std::chrono::milliseconds{200}};
         bool tcp_no_delay{true};
         asio::io_context io_context{};
+        asio::strand<asio::io_context::executor_type> strand{asio::make_strand(io_context)};
+        std::optional<asio::executor_work_guard<asio::io_context::executor_type>> work_guard{};
+        std::jthread runner_{};
+        std::atomic<bool> runner_cleanup_pending_{false};
 
         void close()
         {
@@ -108,6 +122,58 @@ private:
                 socket_->close(ec);
             }
             socket_.reset();
+            stop_runner(false);
+        }
+
+        void stop()
+        {
+            close();
+            stop_runner(true);
+        }
+
+        template <typename SuccessHandler, typename FailureHandler>
+        void async_send_chunk(const std::shared_ptr<FileChunk>& chunk,
+                              std::size_t attempt,
+                              SuccessHandler&& on_success,
+                              FailureHandler&& on_failure)
+        {
+            auto payload = std::make_shared<std::vector<std::uint8_t>>(serialize(*chunk));
+
+            auto send_op = [this,
+                            chunk,
+                            payload,
+                            attempt,
+                            success = std::forward<SuccessHandler>(on_success),
+                            failure = std::forward<FailureHandler>(on_failure)]() mutable {
+                if (!socket_ || !socket_->is_open())
+                {
+                    failure(*chunk, attempt, "socket closed");
+                    return;
+                }
+
+                asio::async_write(*socket_, asio::buffer(*payload),
+                                  asio::bind_executor(
+                                      strand,
+                                      [this, chunk, payload, attempt, success = std::move(success),
+                                       failure = std::move(failure)](const asio::error_code& ec, std::size_t) mutable {
+                                          if (!ec)
+                                          {
+                                              payload->clear();
+                                              payload->shrink_to_fit();
+                                              success(*chunk, attempt);
+                                          }
+                                          else
+                                          {
+                                              const std::string message = ec.message();
+                                              close();
+                                              payload->clear();
+                                              payload->shrink_to_fit();
+                                              failure(*chunk, attempt, message);
+                                          }
+                                      }));
+            };
+
+            asio::dispatch(strand, std::move(send_op));
         }
 
         asio::ip::tcp::socket& ensure_connected()
@@ -157,6 +223,7 @@ private:
                     {
                         socket_->set_option(asio::ip::tcp::no_delay{true});
                     }
+                    ensure_runner();
                     return *socket_;
                 }
 
@@ -183,51 +250,86 @@ private:
             return buffer;
         }
 
-        struct SendResult
-        {
-            bool success{false};
-            std::size_t attempts{0};
-            std::string last_error;
-        };
-
-        SendResult send_chunk(const FileChunk& chunk)
-        {
-            const auto payload = serialize(chunk);
-            const auto max_attempts = std::max<std::size_t>(std::size_t{1}, max_send_retries);
-            SendResult result{};
-
-            for (std::size_t attempt = 0; attempt < max_attempts; ++attempt)
-            {
-                result.attempts = attempt + 1;
-                try
-                {
-                    auto& socket = ensure_connected();
-                    asio::write(socket, asio::buffer(payload));
-                    result.success = true;
-                    return result;
-                }
-                catch (const std::exception& ex)
-                {
-                    close();
-                    result.last_error = ex.what();
-                    if (attempt + 1 < max_attempts)
-                    {
-                        std::clog << "[sender] retry chunk " << chunk.descriptor.path
-                                  << " (#" << chunk.index << "/" << chunk.total_chunks << ") via " << host << ':'
-                                  << port << " attempt=" << (attempt + 1) << " reason=" << ex.what() << std::endl;
-                    }
-                }
-            }
-
-            return result;
-        }
-
         bool is_open() const
         {
             return socket_ && socket_->is_open();
         }
 
     private:
+        void ensure_runner()
+        {
+            if (runner_cleanup_pending_ && runner_.joinable() && std::this_thread::get_id() != runner_.get_id())
+            {
+                runner_.join();
+                runner_ = std::jthread{};
+                runner_cleanup_pending_ = false;
+                io_context.restart();
+            }
+
+            if (!work_guard_)
+            {
+                work_guard_.emplace(asio::make_work_guard(io_context.get_executor()));
+            }
+
+            if (!runner_.joinable())
+            {
+                io_context.restart();
+                runner_ = std::jthread([this](std::stop_token stop_token) {
+                    while (!stop_token.stop_requested())
+                    {
+                        io_context.run();
+                        if (stop_token.stop_requested())
+                        {
+                            break;
+                        }
+                        if (work_guard_)
+                        {
+                            io_context.restart();
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                });
+            }
+        }
+
+        void stop_runner(bool wait)
+        {
+            if (work_guard_)
+            {
+                work_guard_->reset();
+                work_guard_.reset();
+            }
+
+            io_context.stop();
+
+            if (runner_.joinable())
+            {
+                runner_.request_stop();
+                if (wait && std::this_thread::get_id() != runner_.get_id())
+                {
+                    runner_.join();
+                    runner_ = std::jthread{};
+                    runner_cleanup_pending_ = false;
+                }
+                else if (!wait)
+                {
+                    runner_cleanup_pending_ = true;
+                }
+            }
+
+            if (wait || !runner_.joinable())
+            {
+                io_context.restart();
+                if (!runner_.joinable())
+                {
+                    runner_cleanup_pending_ = false;
+                }
+            }
+        }
+
         std::optional<asio::ip::tcp::socket> socket_{};
     };
 
@@ -268,8 +370,8 @@ private:
 
         while (!stop_token.stop_requested())
         {
-            auto chunk = queue_.pop();
-            if (!chunk)
+            auto chunk_opt = queue_.pop();
+            if (!chunk_opt)
             {
                 if (queue_.closed())
                 {
@@ -278,47 +380,125 @@ private:
                 continue;
             }
 
+            auto chunk = std::make_shared<FileChunk>(std::move(*chunk_opt));
+
             bool sent = false;
+            bool metrics_recorded = false;
             std::size_t chunk_retries = 0;
             std::string last_error;
-            try
+            const auto max_attempts = std::max<std::size_t>(std::size_t{1}, options_.max_send_retries);
+            Connection* connection_ptr = nullptr;
+
+            for (std::size_t attempt = 1; attempt <= max_attempts && !stop_token.stop_requested(); ++attempt)
             {
-                Connection& connection = next_connection();
-                auto result = connection.send_chunk(*chunk);
-                chunk_retries = result.attempts > 0 ? result.attempts - 1 : 0;
-                if (result.success)
+                std::promise<void> promise;
+                auto future = promise.get_future();
+
+                try
                 {
-                    sent = true;
+                    if (!connection_ptr)
+                    {
+                        connection_ptr = &next_connection();
+                    }
+                    Connection& connection = *connection_ptr;
+                    try
+                    {
+                        auto& socket = connection.ensure_connected();
+                        (void)socket;
+                    }
+                    catch (const std::exception& ex)
+                    {
+                        last_error = ex.what();
+                        chunk_retries = attempt > 0 ? attempt - 1 : 0;
+                        if (attempt == max_attempts)
+                        {
+                            std::cerr << "[sender] dropping chunk for " << chunk->descriptor.path
+                                      << " after retries reason=" << last_error << std::endl;
+                            chunk->payload.clear();
+                            chunk->payload.shrink_to_fit();
+                        }
+                        if (attempt < max_attempts)
+                        {
+                            std::this_thread::sleep_for(options_.reconnect_delay);
+                        }
+                        continue;
+                    }
+
+                    connection.async_send_chunk(
+                        chunk,
+                        attempt,
+                        [&](const FileChunk& completed_chunk, std::size_t used_attempts) {
+                            sent = true;
+                            metrics_recorded = true;
+                            chunk_retries = used_attempts > 0 ? used_attempts - 1 : 0;
+                            window_chunks += 1;
+                            const auto payload_size = completed_chunk.payload.size();
+                            window_bytes += payload_size;
+                            window_retries += chunk_retries;
+                            channels_.notify_control(options_.connections, active_connections());
+
+                            std::cout << "[sender] chunk sent: " << completed_chunk.descriptor.path << " (#"
+                                      << completed_chunk.index << "/" << completed_chunk.total_chunks
+                                      << ") attempts=" << used_attempts << std::endl;
+
+                            chunk->payload.clear();
+                            chunk->payload.shrink_to_fit();
+
+                            promise.set_value();
+                        },
+                        [&](const FileChunk& failed_chunk, std::size_t used_attempts, const std::string& error) {
+                            last_error = error;
+                            chunk_retries = used_attempts > 0 ? used_attempts - 1 : 0;
+
+                            if (used_attempts >= max_attempts)
+                            {
+                                std::cerr << "[sender] dropping chunk for " << failed_chunk.descriptor.path
+                                          << " after retries";
+                                if (!error.empty())
+                                {
+                                    std::cerr << " reason=" << error;
+                                }
+                                std::cerr << std::endl;
+                            }
+
+                            promise.set_value();
+                        });
                 }
-                else
+                catch (const std::exception& ex)
                 {
-                    last_error = result.last_error;
+                    last_error = ex.what();
+                    chunk_retries = attempt > 0 ? attempt - 1 : 0;
+                    promise.set_value();
                 }
-            }
-            catch (const std::exception& ex)
-            {
-                last_error = ex.what();
+
+                future.wait();
+
+                if (sent || attempt >= max_attempts)
+                {
+                    break;
+                }
+
+                if (stop_token.stop_requested())
+                {
+                    break;
+                }
+
+                std::this_thread::sleep_for(options_.reconnect_delay);
             }
 
-            if (sent)
+            if (!sent)
             {
-                channels_.notify_control(options_.connections, active_connections());
-                window_chunks += 1;
-                window_bytes += chunk->payload.size();
-                window_retries += chunk_retries;
-
-                std::cout << "[sender] chunk sent: " << chunk->descriptor.path << " (#" << chunk->index << "/"
-                          << chunk->total_chunks << ") attempts=" << (chunk_retries + 1) << std::endl;
-            }
-            else
-            {
-                window_retries += chunk_retries;
-                std::cerr << "[sender] dropping chunk for " << chunk->descriptor.path << " after retries";
+                if (!metrics_recorded)
+                {
+                    window_retries += chunk_retries;
+                }
+                chunk->payload.clear();
+                chunk->payload.shrink_to_fit();
                 if (!last_error.empty())
                 {
-                    std::cerr << " reason=" << last_error;
+                    std::cerr << "[sender] final failure for " << chunk->descriptor.path
+                              << " reason=" << last_error << std::endl;
                 }
-                std::cerr << std::endl;
             }
 
             const auto now = std::chrono::steady_clock::now();
