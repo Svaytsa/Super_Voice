@@ -7,13 +7,14 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <exception>
-#include <future>
 #include <iomanip>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <queue>
 #include <sstream>
 #include <stdexcept>
 #include <stop_token>
@@ -87,6 +88,14 @@ public:
             worker_.join();
         }
 
+        wait_for_inflight_zero();
+
+        {
+            std::scoped_lock metrics_lock(metrics_mutex_);
+            maybe_report_metrics_locked(std::chrono::steady_clock::now(), true);
+            reset_metrics_window_locked(std::chrono::steady_clock::now());
+        }
+
         for (auto& connection : connections_)
         {
             if (connection)
@@ -97,6 +106,20 @@ public:
     }
 
 private:
+    struct PendingChunk
+    {
+        std::shared_ptr<FileChunk> chunk;
+        std::size_t attempt{1};
+    };
+
+    struct MetricsWindow
+    {
+        std::chrono::steady_clock::time_point start{};
+        std::size_t chunks{0};
+        std::size_t bytes{0};
+        std::size_t retries{0};
+    };
+
     struct Connection
     {
         std::size_t index{0};
@@ -362,165 +385,107 @@ private:
     void run(std::stop_token stop_token)
     {
         channels_.notify_control(options_.connections, active_connections());
-        auto window_start = std::chrono::steady_clock::now();
-        std::size_t window_chunks = 0;
-        std::size_t window_bytes = 0;
-        std::size_t window_retries = 0;
-        const auto metrics_interval = std::chrono::seconds{5};
+        {
+            std::scoped_lock metrics_lock(metrics_mutex_);
+            reset_metrics_window_locked(std::chrono::steady_clock::now());
+        }
+
+        finishing_.store(false);
 
         while (!stop_token.stop_requested())
         {
-            auto chunk_opt = queue_.pop();
-            if (!chunk_opt)
+            std::shared_ptr<FileChunk> chunk{};
+            std::size_t attempt = 1;
+
             {
-                if (queue_.closed())
+                std::lock_guard retry_lock(retry_mutex_);
+                if (!retry_queue_.empty())
                 {
-                    break;
+                    auto pending = std::move(retry_queue_.front());
+                    retry_queue_.pop();
+                    chunk = std::move(pending.chunk);
+                    attempt = pending.attempt;
                 }
-                continue;
             }
 
-            auto chunk = std::make_shared<FileChunk>(std::move(*chunk_opt));
-
-            bool sent = false;
-            bool metrics_recorded = false;
-            std::size_t chunk_retries = 0;
-            std::string last_error;
-            const auto max_attempts = std::max<std::size_t>(std::size_t{1}, options_.max_send_retries);
-            Connection* connection_ptr = nullptr;
-
-            for (std::size_t attempt = 1; attempt <= max_attempts && !stop_token.stop_requested(); ++attempt)
+            if (!chunk)
             {
-                std::promise<void> promise;
-                auto future = promise.get_future();
-
-                try
+                auto chunk_opt = queue_.pop();
+                if (!chunk_opt)
                 {
-                    if (!connection_ptr)
+                    if (queue_.closed())
                     {
-                        connection_ptr = &next_connection();
-                    }
-                    Connection& connection = *connection_ptr;
-                    try
-                    {
-                        auto& socket = connection.ensure_connected();
-                        (void)socket;
-                    }
-                    catch (const std::exception& ex)
-                    {
-                        last_error = ex.what();
-                        chunk_retries = attempt > 0 ? attempt - 1 : 0;
-                        if (attempt == max_attempts)
+                        finishing_.store(true);
+
+                        std::unique_lock retry_lock(retry_mutex_);
+                        retry_cv_.wait(retry_lock, [&] {
+                            if (stop_token.stop_requested())
+                            {
+                                return true;
+                            }
+                            if (!retry_queue_.empty())
+                            {
+                                return true;
+                            }
+                            std::unique_lock inflight_lock(inflight_mutex_);
+                            return inflight_ == 0;
+                        });
+
+                        if (stop_token.stop_requested())
                         {
-                            std::cerr << "[sender] dropping chunk for " << chunk->descriptor.path
-                                      << " after retries reason=" << last_error << std::endl;
-                            chunk->payload.clear();
-                            chunk->payload.shrink_to_fit();
+                            break;
                         }
-                        if (attempt < max_attempts)
+
+                        if (!retry_queue_.empty())
                         {
-                            std::this_thread::sleep_for(options_.reconnect_delay);
+                            finishing_.store(false);
+                            continue;
                         }
+
+                        retry_lock.unlock();
+                        std::unique_lock inflight_lock(inflight_mutex_);
+                        if (inflight_ == 0)
+                        {
+                            break;
+                        }
+
+                        finishing_.store(false);
                         continue;
                     }
 
-                    connection.async_send_chunk(
-                        chunk,
-                        attempt,
-                        [&](const FileChunk& completed_chunk, std::size_t used_attempts) {
-                            sent = true;
-                            metrics_recorded = true;
-                            chunk_retries = used_attempts > 0 ? used_attempts - 1 : 0;
-                            window_chunks += 1;
-                            const auto payload_size = completed_chunk.payload.size();
-                            window_bytes += payload_size;
-                            window_retries += chunk_retries;
-                            channels_.notify_control(options_.connections, active_connections());
-
-                            std::cout << "[sender] chunk sent: " << completed_chunk.descriptor.path << " (#"
-                                      << completed_chunk.index << "/" << completed_chunk.total_chunks
-                                      << ") attempts=" << used_attempts << std::endl;
-
-                            chunk->payload.clear();
-                            chunk->payload.shrink_to_fit();
-
-                            promise.set_value();
-                        },
-                        [&](const FileChunk& failed_chunk, std::size_t used_attempts, const std::string& error) {
-                            last_error = error;
-                            chunk_retries = used_attempts > 0 ? used_attempts - 1 : 0;
-
-                            if (used_attempts >= max_attempts)
-                            {
-                                std::cerr << "[sender] dropping chunk for " << failed_chunk.descriptor.path
-                                          << " after retries";
-                                if (!error.empty())
-                                {
-                                    std::cerr << " reason=" << error;
-                                }
-                                std::cerr << std::endl;
-                            }
-
-                            promise.set_value();
-                        });
-                }
-                catch (const std::exception& ex)
-                {
-                    last_error = ex.what();
-                    chunk_retries = attempt > 0 ? attempt - 1 : 0;
-                    promise.set_value();
+                    continue;
                 }
 
-                future.wait();
-
-                if (sent || attempt >= max_attempts)
-                {
-                    break;
-                }
-
-                if (stop_token.stop_requested())
-                {
-                    break;
-                }
-
-                std::this_thread::sleep_for(options_.reconnect_delay);
+                chunk = std::make_shared<FileChunk>(std::move(*chunk_opt));
+                attempt = 1;
             }
 
-            if (!sent)
+            if (!acquire_slot(stop_token))
             {
-                if (!metrics_recorded)
-                {
-                    window_retries += chunk_retries;
-                }
-                chunk->payload.clear();
-                chunk->payload.shrink_to_fit();
-                if (!last_error.empty())
-                {
-                    std::cerr << "[sender] final failure for " << chunk->descriptor.path
-                              << " reason=" << last_error << std::endl;
-                }
+                break;
             }
 
-            const auto now = std::chrono::steady_clock::now();
-            if (now - window_start >= metrics_interval)
+            Connection& connection = next_connection();
+            try
             {
-                const double seconds = std::chrono::duration<double>(now - window_start).count();
-                const double chunk_rate = seconds > 0 ? static_cast<double>(window_chunks) / seconds : 0.0;
-                const double mb_rate = seconds > 0
-                                            ? (static_cast<double>(window_bytes) / (1024.0 * 1024.0)) / seconds
-                                            : 0.0;
-
-                std::ostringstream oss;
-                oss << std::fixed << std::setprecision(2);
-                oss << "[metrics] queue=" << queue_.size() << '/' << queue_.capacity() << " chunk_rate="
-                    << chunk_rate << "/s mb_rate=" << mb_rate << " retries=" << window_retries;
-                std::cout << oss.str() << std::endl;
-
-                window_start = now;
-                window_chunks = 0;
-                window_bytes = 0;
-                window_retries = 0;
+                auto& socket = connection.ensure_connected();
+                (void)socket;
             }
+            catch (const std::exception& ex)
+            {
+                on_chunk_failure(chunk, attempt, ex.what());
+                continue;
+            }
+
+            connection.async_send_chunk(
+                chunk,
+                attempt,
+                [this, chunk](const FileChunk&, std::size_t used_attempts) {
+                    on_chunk_success(chunk, used_attempts);
+                },
+                [this, chunk](const FileChunk&, std::size_t used_attempts, const std::string& error) {
+                    on_chunk_failure(chunk, used_attempts, error);
+                });
         }
     }
 
@@ -531,6 +496,163 @@ private:
     std::mutex connection_mutex_;
     std::size_t next_connection_index_{0};
     std::jthread worker_{};
+
+    std::mutex retry_mutex_;
+    std::queue<PendingChunk> retry_queue_;
+    std::condition_variable retry_cv_;
+
+    std::mutex inflight_mutex_;
+    std::condition_variable inflight_cv_;
+    std::size_t inflight_{0};
+    std::atomic<bool> finishing_{false};
+
+    std::mutex metrics_mutex_;
+    MetricsWindow metrics_window_{};
+    const std::chrono::seconds metrics_interval_{5};
+
+    bool acquire_slot(const std::stop_token& stop_token)
+    {
+        std::unique_lock lock(inflight_mutex_);
+        inflight_cv_.wait(lock, [&] {
+            return inflight_ < options_.connections || stop_token.stop_requested();
+        });
+
+        if (stop_token.stop_requested())
+        {
+            return false;
+        }
+
+        ++inflight_;
+        return true;
+    }
+
+    void release_slot()
+    {
+        bool notify_retry = false;
+        {
+            std::scoped_lock lock(inflight_mutex_);
+            if (inflight_ > 0)
+            {
+                --inflight_;
+            }
+            if (inflight_ == 0 && finishing_.load())
+            {
+                notify_retry = true;
+            }
+        }
+
+        inflight_cv_.notify_one();
+        if (notify_retry)
+        {
+            retry_cv_.notify_all();
+        }
+    }
+
+    void wait_for_inflight_zero()
+    {
+        std::unique_lock lock(inflight_mutex_);
+        inflight_cv_.wait(lock, [&] { return inflight_ == 0; });
+    }
+
+    std::size_t max_attempts() const
+    {
+        return std::max<std::size_t>(std::size_t{1}, options_.max_send_retries);
+    }
+
+    void on_chunk_success(const std::shared_ptr<FileChunk>& chunk, std::size_t attempt)
+    {
+        const auto retries = attempt > 0 ? attempt - 1 : 0;
+        const auto payload_size = chunk->payload.size();
+
+        {
+            std::scoped_lock metrics_lock(metrics_mutex_);
+            metrics_window_.chunks += 1;
+            metrics_window_.bytes += payload_size;
+            metrics_window_.retries += retries;
+            maybe_report_metrics_locked(std::chrono::steady_clock::now(), false);
+        }
+
+        channels_.notify_control(options_.connections, active_connections());
+
+        std::cout << "[sender] chunk sent: " << chunk->descriptor.path << " (#" << chunk->index << "/"
+                  << chunk->total_chunks << ") attempts=" << attempt << std::endl;
+
+        chunk->payload.clear();
+        chunk->payload.shrink_to_fit();
+
+        release_slot();
+    }
+
+    void on_chunk_failure(const std::shared_ptr<FileChunk>& chunk,
+                          std::size_t attempt,
+                          const std::string& error)
+    {
+        const auto attempts_limit = max_attempts();
+        if (attempt >= attempts_limit)
+        {
+            {
+                std::scoped_lock metrics_lock(metrics_mutex_);
+                metrics_window_.retries += attempt > 0 ? attempt - 1 : 0;
+                maybe_report_metrics_locked(std::chrono::steady_clock::now(), false);
+            }
+
+            std::cerr << "[sender] dropping chunk for " << chunk->descriptor.path << " after retries";
+            if (!error.empty())
+            {
+                std::cerr << " reason=" << error;
+            }
+            std::cerr << std::endl;
+
+            chunk->payload.clear();
+            chunk->payload.shrink_to_fit();
+
+            release_slot();
+            return;
+        }
+
+        {
+            std::lock_guard retry_lock(retry_mutex_);
+            retry_queue_.push(PendingChunk{chunk, attempt + 1});
+        }
+
+        retry_cv_.notify_one();
+        release_slot();
+    }
+
+    void reset_metrics_window_locked(std::chrono::steady_clock::time_point now)
+    {
+        metrics_window_.start = now;
+        metrics_window_.chunks = 0;
+        metrics_window_.bytes = 0;
+        metrics_window_.retries = 0;
+    }
+
+    void maybe_report_metrics_locked(std::chrono::steady_clock::time_point now, bool force)
+    {
+        const auto elapsed = now - metrics_window_.start;
+        if (!force && elapsed < metrics_interval_)
+        {
+            return;
+        }
+
+        const double seconds = std::chrono::duration<double>(elapsed).count();
+        const double chunk_rate = seconds > 0 ? static_cast<double>(metrics_window_.chunks) / seconds : 0.0;
+        const double mb_rate = seconds > 0
+                                    ? (static_cast<double>(metrics_window_.bytes) / (1024.0 * 1024.0)) / seconds
+                                    : 0.0;
+
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(2);
+        oss << "[metrics] queue=" << queue_.size() << '/' << queue_.capacity() << " chunk_rate=" << chunk_rate
+            << "/s mb_rate=" << mb_rate << " retries=" << metrics_window_.retries;
+        if (force)
+        {
+            oss << " (final)";
+        }
+        std::cout << oss.str() << std::endl;
+
+        reset_metrics_window_locked(now);
+    }
 };
 
 }  // namespace sv::client
