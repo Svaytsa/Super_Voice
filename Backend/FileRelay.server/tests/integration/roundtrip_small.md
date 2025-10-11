@@ -7,6 +7,9 @@ Verify that the Dockerised client/server stack reliably transfers a small binary
 - Docker daemon available to the host running the test.
 - `scripts/e2e.sh` accessible and executable.
 - No conflicting containers named `file-relay-e2e-server` or `file-relay-e2e-client` are running.
+- Legacy setups that previously used the `local-ai-model` image can either retag it to
+  `file-relay` or export `LOCAL_AI_IMAGE` / `LOCAL_AI_MODEL_IMAGE`, which the harness treats as
+  fallbacks when `IMAGE_NAME` is unset.
 
 ## Execution Steps
 1. Run the end-to-end harness:

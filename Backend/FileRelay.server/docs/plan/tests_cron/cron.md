@@ -9,6 +9,9 @@ This document defines the `mcp-cron` automation that continuously exercises the 
 - **Shared cache directories:**
   - `/var/cache/file-relay/docker` for Docker layer cache (optional).
   - `/var/cache/file-relay/artifacts` for persisted logs and metrics.
+- **Image tag variable:** `IMAGE_NAME` defaults to `file-relay`. Legacy automation may export
+  `LOCAL_AI_IMAGE` / `LOCAL_AI_MODEL_IMAGE`; helper scripts treat those as fallbacks when
+  `IMAGE_NAME` is absent.
 
 ## Jobs
 
@@ -21,17 +24,19 @@ jobs:
     schedule: "0 1 * * *"
     description: "Build Docker image and run unit targets"
     checkout: true
+    env:
+      IMAGE_NAME: file-relay
     steps:
       - name: Restore docker cache
         run: |
           docker load < /var/cache/file-relay/docker/cache.tar || true
       - name: Build release image
         run: |
-          docker build -t file-relay .
+          docker build -t ${IMAGE_NAME} .
       - name: Persist docker cache
         run: |
           mkdir -p /var/cache/file-relay/docker
-          docker save file-relay > /var/cache/file-relay/docker/cache.tar
+          docker save ${IMAGE_NAME} > /var/cache/file-relay/docker/cache.tar
       - name: Smoke test binaries
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

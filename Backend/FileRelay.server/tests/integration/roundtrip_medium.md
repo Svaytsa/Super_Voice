@@ -7,6 +7,9 @@ Validate chunking, compression, and throughput behaviour for a medium-sized payl
 - Docker daemon is reachable and has sufficient disk space for temporary artifacts.
 - `./scripts/e2e.sh` is executable.
 - No leftover artifacts from previous runs exist under `data/e2e/` (the harness performs cleanup automatically but double-check when running manually).
+- Legacy automation may still reference the `local-ai-model` image name. Retag it to `file-relay`
+  or expose `LOCAL_AI_IMAGE` / `LOCAL_AI_MODEL_IMAGE`—the harness promotes those variables when
+  `IMAGE_NAME` is not provided.
 
 ## Execution Steps
 1. Invoke the harness for the medium tier:

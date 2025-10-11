@@ -9,6 +9,14 @@ The README describes how to build the binaries, run them directly or inside Dock
 them through command-line flags and environment variables, understand the expected on-disk
 layout, and exercise the end-to-end harness.
 
+## Migration Note
+
+The project previously lived under `Backend/Local_AI_Model_.server/` with the Docker image tag
+`local-ai-model`.  All documentation, scripts, and automation have been migrated to this new
+directory and image name.  Existing tooling that still exports the legacy environment variables
+`LOCAL_AI_IMAGE` or `LOCAL_AI_MODEL_IMAGE` will continue to work—the helper scripts treat those as
+fallbacks when `IMAGE_NAME` is unset.
+
 ## Repository Layout
 
 ```
