@@ -26,7 +26,7 @@
 - Provide launch helpers in `scripts/run_client.sh` and `scripts/run_server.sh` for Unix.
 - Provide Windows equivalents `scripts/run_client.bat` and `scripts/run_server.bat`.
 - Each script should set the appropriate `ROLE`, map host directories, inject `APP_START`, and proxy additional CLI arguments to `docker run`.
-- Scripts should call `docker run --rm -it local-ai:<role>` so the same image can be reused with different roles and volume mounts.
+- Scripts should call `docker run --rm -it file-relay:<role>` so the same image can be reused with different roles and volume mounts.
 
 ## Volume Mounting Strategy
 - **Client role**: Mount a Windows-accessible host directory containing client assets into `/app/client_mount`.
@@ -35,7 +35,7 @@
 ## Example Commands
 ```bash
 # Build image for client
-docker build -t local-ai:client --build-arg ROLE=client .
+docker build -t file-relay:client --build-arg ROLE=client .
 
 # Run client container mounting Windows directory
 ./scripts/run_client.sh \
@@ -43,7 +43,7 @@ docker build -t local-ai:client --build-arg ROLE=client .
   -e APP_START="python client/main.py"
 
 # Build image for server
-docker build -t local-ai:server --build-arg ROLE=server .
+docker build -t file-relay:server --build-arg ROLE=server .
 
 # Run server container with patches and files mounted
 ./scripts/run_server.sh \
@@ -57,7 +57,7 @@ docker run --rm -it \
   -e APP_START="python server/main.py" \
   -v $(pwd)/patches:/app/server/patches \
   -v $(pwd)/files:/app/server/files \
-  local-ai:server
+  file-relay:server
 ```
 
 ## Windows PowerShell Examples

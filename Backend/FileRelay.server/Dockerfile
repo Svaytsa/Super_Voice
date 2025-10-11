@@ -38,10 +38,10 @@ RUN apt-get update \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /opt/local_ai_model
+WORKDIR /opt/file_relay
 
 COPY --from=builder /src/build/Client/client_app ./client_app
 COPY --from=builder /src/build/Server/server_app ./server_app
 
-ENTRYPOINT ["/bin/sh", "-c", "if [ \"$ROLE\" = \"client\" ]; then exec /opt/local_ai_model/client_app $CLIENT_ARGS; else exec /opt/local_ai_model/server_app $SERVER_ARGS; fi"]
+ENTRYPOINT ["/bin/sh", "-c", "if [ \"$ROLE\" = \"client\" ]; then exec /opt/file_relay/client_app $CLIENT_ARGS; else exec /opt/file_relay/server_app $SERVER_ARGS; fi"]
 

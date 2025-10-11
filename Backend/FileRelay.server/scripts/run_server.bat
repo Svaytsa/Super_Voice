@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 set "SCRIPT_DIR=%~dp0"
 for %%I in ("%SCRIPT_DIR%..") do set "PROJECT_ROOT=%%~fI"
 
-if not defined IMAGE_NAME set "IMAGE_NAME=local-ai-model"
+if not defined IMAGE_NAME set "IMAGE_NAME=file-relay"
 if not defined SERVER_VOLUME_HOST set "SERVER_VOLUME_HOST=%PROJECT_ROOT%\data\server"
 if not defined SHARED_VOLUME_HOST set "SHARED_VOLUME_HOST=%PROJECT_ROOT%\data\shared"
 if not defined SERVER_PORT set "SERVER_PORT=8080"
@@ -17,10 +17,10 @@ docker build -t %IMAGE_NAME% "%PROJECT_ROOT%"
 
 echo Starting server container...
 docker run --rm ^
-  --name local-ai-server ^
+  --name file-relay-server ^
   -e ROLE=server ^
   -e SERVER_ARGS="%SERVER_ARGS%" ^
   -p %SERVER_PORT%:%SERVER_PORT% ^
-  -v "%SERVER_VOLUME_HOST%:/opt/local_ai_model/server_data" ^
-  -v "%SHARED_VOLUME_HOST%:/opt/local_ai_model/shared" ^
+  -v "%SERVER_VOLUME_HOST%:/opt/file_relay/server_data" ^
+  -v "%SHARED_VOLUME_HOST%:/opt/file_relay/shared" ^
   %IMAGE_NAME%

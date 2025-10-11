@@ -72,9 +72,9 @@ PY
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
 
-IMAGE_NAME=${IMAGE_NAME:-local-ai-model}
-SERVER_CONTAINER=${SERVER_CONTAINER:-local-ai-e2e-server}
-CLIENT_CONTAINER=${CLIENT_CONTAINER:-local-ai-e2e-client}
+IMAGE_NAME=${IMAGE_NAME:-file-relay}
+SERVER_CONTAINER=${SERVER_CONTAINER:-file-relay-e2e-server}
+CLIENT_CONTAINER=${CLIENT_CONTAINER:-file-relay-e2e-client}
 DOCKER_NETWORK=${DOCKER_NETWORK:-host}
 E2E_ROOT=${E2E_ROOT:-${PROJECT_ROOT}/data/e2e}
 CLIENT_VOLUME_HOST=${CLIENT_VOLUME_HOST:-${E2E_ROOT}/client}
@@ -176,20 +176,20 @@ fi
 
 SERVER_ENV_ARGS=(
     -e ROLE=server
-    -e SERVER_ARGS="--root /opt/local_ai_model/server_data --sys-base 7000 --data-base 7100"
+    -e SERVER_ARGS="--root /opt/file_relay/server_data --sys-base 7000 --data-base 7100"
 )
 
 CLIENT_ENV_ARGS=(
     -e ROLE=client
-    -e CLIENT_ARGS="--watch-dir /opt/local_ai_model/client_data/${CLIENT_WATCH_RELATIVE} --scan-interval-ms 500 --connections 1 --host-prefix 127.0.0. --base-port 7100 --control-host 127.0.0.1 --control-port 7000"
+    -e CLIENT_ARGS="--watch-dir /opt/file_relay/client_data/${CLIENT_WATCH_RELATIVE} --scan-interval-ms 500 --connections 1 --host-prefix 127.0.0. --base-port 7100 --control-host 127.0.0.1 --control-port 7000"
 )
 
 echo "[e2e] Starting server container '${SERVER_CONTAINER}'..."
 docker run -d --rm \
     --name "$SERVER_CONTAINER" \
     --network "$DOCKER_NETWORK" \
-    -v "${SERVER_VOLUME_HOST}:/opt/local_ai_model/server_data" \
-    -v "${SHARED_VOLUME_HOST}:/opt/local_ai_model/shared" \
+    -v "${SERVER_VOLUME_HOST}:/opt/file_relay/server_data" \
+    -v "${SHARED_VOLUME_HOST}:/opt/file_relay/shared" \
     "${SERVER_ENV_ARGS[@]}" \
     "$IMAGE_NAME"
 
@@ -199,8 +199,8 @@ echo "[e2e] Starting client container '${CLIENT_CONTAINER}'..."
 docker run -d --rm \
     --name "$CLIENT_CONTAINER" \
     --network "$DOCKER_NETWORK" \
-    -v "${CLIENT_VOLUME_HOST}:/opt/local_ai_model/client_data" \
-    -v "${SHARED_VOLUME_HOST}:/opt/local_ai_model/shared" \
+    -v "${CLIENT_VOLUME_HOST}:/opt/file_relay/client_data" \
+    -v "${SHARED_VOLUME_HOST}:/opt/file_relay/shared" \
     "${CLIENT_ENV_ARGS[@]}" \
     "$IMAGE_NAME"
 

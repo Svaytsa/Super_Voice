@@ -6,7 +6,7 @@ Verify that the Dockerised client/server stack reliably transfers a small binary
 ## Preconditions
 - Docker daemon available to the host running the test.
 - `scripts/e2e.sh` accessible and executable.
-- No conflicting containers named `local-ai-e2e-server` or `local-ai-e2e-client` are running.
+- No conflicting containers named `file-relay-e2e-server` or `file-relay-e2e-client` are running.
 
 ## Execution Steps
 1. Run the end-to-end harness:
@@ -14,7 +14,7 @@ Verify that the Dockerised client/server stack reliably transfers a small binary
    ./scripts/e2e.sh --fixture roundtrip_small.bin
    ```
    If multiple fixtures are required, omit `--fixture` to exercise the full matrix.
-2. The harness builds the `local-ai-model` image (unless cached) and launches dedicated server and client containers.
+2. The harness builds the `file-relay` image (unless cached) and launches dedicated server and client containers.
 3. Once the client is idle, the harness generates `roundtrip_small.bin` (4 096 bytes) under the mounted client watch directory using the deterministic pattern `SuperVoiceTestPattern\n`.
 4. The client uploads the compressed data to the server via the TCP data channel, which stores and reassembles it under `server_data/files/roundtrip_small.bin`.
 5. The harness waits for the server-side artifact, computes its SHA-256 checksum, and compares it to the pre-computed expectation.
