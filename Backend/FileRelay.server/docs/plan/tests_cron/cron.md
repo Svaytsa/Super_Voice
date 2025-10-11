@@ -1,14 +1,14 @@
-# mcp-cron Schedule: Local AI Model Server
+# mcp-cron Schedule: File Relay Server
 
 This document defines the `mcp-cron` automation that continuously exercises the Docker image build and end-to-end (E2E) roundtrip tests described in `scripts/e2e.sh`.
 
 ## Environment
-- **Repository:** `Super_Voice/Backend/Local_AI_Model_.server`
+- **Repository:** `Super_Voice/Backend/FileRelay.server`
 - **Runner image:** Ubuntu 22.04 with Docker CLI, Python 3.10+, and `mcp-cron` agent.
-- **Working directory:** Repository root (`/workspace/Super_Voice/Backend/Local_AI_Model_.server`).
+- **Working directory:** Repository root (`/workspace/Super_Voice/Backend/FileRelay.server`).
 - **Shared cache directories:**
-  - `/var/cache/local-ai-model/docker` for Docker layer cache (optional).
-  - `/var/cache/local-ai-model/artifacts` for persisted logs and metrics.
+  - `/var/cache/file-relay/docker` for Docker layer cache (optional).
+  - `/var/cache/file-relay/artifacts` for persisted logs and metrics.
 
 ## Jobs
 
@@ -24,14 +24,14 @@ jobs:
     steps:
       - name: Restore docker cache
         run: |
-          docker load < /var/cache/local-ai-model/docker/cache.tar || true
+          docker load < /var/cache/file-relay/docker/cache.tar || true
       - name: Build release image
         run: |
-          docker build -t local-ai-model .
+          docker build -t file-relay .
       - name: Persist docker cache
         run: |
-          mkdir -p /var/cache/local-ai-model/docker
-          docker save local-ai-model > /var/cache/local-ai-model/docker/cache.tar
+          mkdir -p /var/cache/file-relay/docker
+          docker save file-relay > /var/cache/file-relay/docker/cache.tar
       - name: Smoke test binaries
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -52,12 +52,12 @@ Runs every day at 04:00 UTC to exercise the lightweight fixtures and detect regr
     description: "Run E2E harness for small and medium fixtures"
     checkout: true
     env:
-      IMAGE_NAME: local-ai-model-nightly
-      E2E_ROOT: /var/cache/local-ai-model/e2e
+      IMAGE_NAME: file-relay-nightly
+      E2E_ROOT: /var/cache/file-relay/e2e
     steps:
       - name: Restore docker cache
         run: |
-          docker load < /var/cache/local-ai-model/docker/cache.tar || true
+          docker load < /var/cache/file-relay/docker/cache.tar || true
       - name: Execute harness (small + medium)
         run: |
           ./scripts/e2e.sh --fixture roundtrip_small.bin --no-build
@@ -79,8 +79,8 @@ Runs every Sunday at 05:30 UTC with the complete roundtrip matrix, including the
     description: "Run full E2E matrix (small, medium, large)"
     checkout: true
     env:
-      IMAGE_NAME: local-ai-model-weekly
-      E2E_ROOT: /var/cache/local-ai-model/e2e
+      IMAGE_NAME: file-relay-weekly
+      E2E_ROOT: /var/cache/file-relay/e2e
     steps:
       - name: Rebuild image (fresh layer)
         run: |
