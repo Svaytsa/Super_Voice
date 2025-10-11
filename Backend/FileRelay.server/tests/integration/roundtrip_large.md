@@ -7,6 +7,9 @@ Stress the streaming, chunk assembly, and disk persistence paths with a large bi
 - Docker daemon with adequate CPU/network capacity.
 - `./scripts/e2e.sh` available.
 - Host has at least ~10 MiB free disk space for transient artifacts and logs.
+- Legacy environments may still reference the `local-ai-model` Docker tag. Retag it to
+  `file-relay` or export `LOCAL_AI_IMAGE` / `LOCAL_AI_MODEL_IMAGE`—the harness promotes those
+  variables when `IMAGE_NAME` is undefined.
 
 ## Execution Steps
 1. Launch the harness for the large fixture (or allow the default matrix run to include it):
