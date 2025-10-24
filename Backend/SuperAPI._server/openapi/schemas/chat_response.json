@@ -1,0 +1,85 @@
+{
+  "$id": "https://superapi.supervoice.dev/schemas/chat_response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ChatCompletionResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "object", "created", "model", "choices", "usage"],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "object": {
+      "type": "string",
+      "enum": ["chat.completion", "chat.completion.chunk"]
+    },
+    "created": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "model": {
+      "type": "string"
+    },
+    "choices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["index"],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "message": {
+            "$ref": "./message.json"
+          },
+          "delta": {
+            "$ref": "./message.json"
+          },
+          "finish_reason": {
+            "type": "string"
+          },
+          "logprobs": {
+            "type": ["object", "null"],
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "usage": {
+      "type": "object",
+      "required": ["prompt_tokens", "completion_tokens", "total_tokens"],
+      "properties": {
+        "prompt_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completion_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "audio_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cached_tokens": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "system_fingerprint": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

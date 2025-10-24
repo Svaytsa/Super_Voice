@@ -1,0 +1,36 @@
+{
+  "$id": "https://superapi.supervoice.dev/schemas/error.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ErrorResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": ["type", "message", "provider", "code", "request_id", "retry_after"],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "code": {
+          "type": ["string", "integer"]
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

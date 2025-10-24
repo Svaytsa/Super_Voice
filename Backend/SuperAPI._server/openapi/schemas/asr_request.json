@@ -1,0 +1,36 @@
+{
+  "$id": "https://superapi.supervoice.dev/schemas/asr_request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AudioTranscriptionRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["model", "file"],
+  "properties": {
+    "model": {
+      "type": "string"
+    },
+    "file": {
+      "type": "string",
+      "format": "binary"
+    },
+    "language": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "response_format": {
+      "type": "string",
+      "enum": ["json", "text", "srt", "verbose_json"]
+    },
+    "temperature": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}
