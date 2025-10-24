@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: superapi
+    static_configs:
+      - targets:
+          - superapi:8080
+  - job_name: otel_collector
+    static_configs:
+      - targets:
+          - otel-collector:9464
