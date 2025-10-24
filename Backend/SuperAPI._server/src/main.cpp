@@ -21,6 +21,8 @@
 #include <signal.h>
 #endif
 
+#include "core/Metrics.hpp"
+#include "core/Tracing.hpp"
 #include "superapi/app_config.h"
 #include "superapi/environment.h"
 #include "superapi/logging.h"
@@ -29,8 +31,6 @@
 
 namespace {
 std::atomic<bool> shutdownRequested{false};
-std::atomic<std::uint64_t> requestCount{0};
-
 #ifndef _WIN32
 void installSignalHandlers() {
     sigset_t sigset;
@@ -81,6 +81,63 @@ std::string resolveRequestId(const drogon::HttpRequestPtr &req) {
     return requestId;
 }
 
+std::uint64_t parseUnsigned(const std::string &value) {
+    if (value.empty()) {
+        return 0;
+    }
+    try {
+        return std::stoull(value);
+    } catch (const std::exception &) {
+        return 0;
+    }
+}
+
+std::uint64_t getAttributeCount(const drogon::AttributesPtr &attributes, const std::string &key) {
+    if (!attributes) {
+        return 0;
+    }
+    try {
+        return attributes->get<std::uint64_t>(key);
+    } catch (const std::exception &) {
+    }
+    try {
+        return static_cast<std::uint64_t>(attributes->get<std::size_t>(key));
+    } catch (const std::exception &) {
+    }
+    try {
+        return static_cast<std::uint64_t>(attributes->get<int>(key));
+    } catch (const std::exception &) {
+    }
+    try {
+        return static_cast<std::uint64_t>(attributes->get<long long>(key));
+    } catch (const std::exception &) {
+    }
+    return 0;
+}
+
+template <typename T>
+std::shared_ptr<T> getSharedAttribute(const drogon::AttributesPtr &attributes, const std::string &key) {
+    if (!attributes) {
+        return nullptr;
+    }
+    try {
+        return attributes->get<std::shared_ptr<T>>(key);
+    } catch (const std::exception &) {
+        return nullptr;
+    }
+}
+
+std::string getStringAttribute(const drogon::AttributesPtr &attributes, const std::string &key) {
+    if (!attributes) {
+        return {};
+    }
+    try {
+        return attributes->get<std::string>(key);
+    } catch (const std::exception &) {
+        return {};
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -102,9 +159,17 @@ int main() {
         std::cerr << "Failed to load config/logging.yaml: " << ex.what() << std::endl;
     }
 
+    YAML::Node otelConfig;
+    try {
+        otelConfig = YAML::LoadFile("config/otel.yaml");
+    } catch (const std::exception &ex) {
+        std::cerr << "Failed to load config/otel.yaml: " << ex.what() << std::endl;
+    }
+
     auto config = superapi::loadAppConfig(serverConfig, loggingConfig);
 
     superapi::initializeLogging(config.logLevel, loggingConfig);
+    superapi::core::Tracer::instance().configure(otelConfig);
 
     auto &application = drogon::app();
     application.enableServerHeader(false);
@@ -120,18 +185,63 @@ int main() {
 
     application.registerFilter(std::make_shared<superapi::middleware::RequestIdMiddleware>());
 
-    application.registerPreRoutingAdvice([](const HttpRequestPtr &) {
-        requestCount.fetch_add(1U, std::memory_order_relaxed);
-    });
-
     application.registerPostHandlingAdvice([](const HttpRequestPtr &req, const HttpResponsePtr &resp) {
-        if (!resp) {
-            return;
-        }
         auto requestId = resolveRequestId(req);
-        if (!requestId.empty()) {
+        if (resp && !requestId.empty()) {
             resp->addHeader("X-Request-ID", requestId);
         }
+
+        auto attributes = req->attributes();
+        auto metricsContext = getSharedAttribute<superapi::core::RequestObservation>(attributes, "observability.metrics");
+        auto span = getSharedAttribute<superapi::core::Span>(attributes, "observability.span");
+
+        const std::string company = getStringAttribute(attributes, "observability.company");
+        const std::string endpoint = getStringAttribute(attributes, "observability.endpoint");
+
+        const auto statusCode = resp ? static_cast<unsigned>(resp->getStatusCode()) : 0U;
+        const auto bytesOut = resp ? static_cast<std::uint64_t>(resp->body().size()) : 0ULL;
+
+        std::uint64_t tokensOut = getAttributeCount(attributes, "observability.tokens_out");
+        if (tokensOut == 0 && resp) {
+            tokensOut = parseUnsigned(resp->getHeader("X-Tokens-Out"));
+        }
+        const std::uint64_t streamEvents = getAttributeCount(attributes, "observability.stream_events");
+
+        if (metricsContext) {
+            metricsContext->complete(statusCode, bytesOut, tokensOut, streamEvents);
+        }
+
+        if (span) {
+            if (!company.empty()) {
+                span->setAttribute("company", company);
+            }
+            if (!endpoint.empty()) {
+                span->setAttribute("http.route", endpoint);
+            }
+            if (metricsContext) {
+                span->setAttribute("request.latency_ms", metricsContext->latencyMs());
+            }
+            span->setAttribute("http.response_content_length", static_cast<std::int64_t>(bytesOut));
+            span->end(static_cast<int>(statusCode), statusCode >= 400 ? "http_error" : "");
+            if (resp) {
+                resp->addHeader("traceparent", superapi::core::Tracer::instance().buildTraceparent(span->context()));
+            }
+        }
+
+        LogContext context = currentLogContext();
+        context.requestId = requestId;
+        if (!company.empty()) {
+            context.company = company;
+        }
+        if (!endpoint.empty()) {
+            context.endpoint = endpoint;
+        }
+        context.status = static_cast<int>(statusCode);
+        context.latencyMs = metricsContext ? metricsContext->latencyMs() : 0.0;
+        context.hasRequest = true;
+        updateLogContext(context);
+        LOG_INFO << "request complete";
+        clearLogContext();
     });
 
     superapi::validateProviderConfig("config/providers.yaml");
@@ -179,19 +289,11 @@ int main() {
     application.registerHandler(
         "/metrics",
         [](const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
-            const auto currentCount = requestCount.load(std::memory_order_relaxed);
-            std::ostringstream stream;
-            stream << "# HELP superapi_requests_total Total number of HTTP requests handled.\n";
-            stream << "# TYPE superapi_requests_total counter\n";
-            stream << "superapi_requests_total " << currentCount << "\n";
-            stream << "# HELP superapi_build_info Build information.\n";
-            stream << "# TYPE superapi_build_info gauge\n";
-            stream << "superapi_build_info{version=\"0.1.0\"} 1\n";
-
+            auto body = superapi::core::MetricsRegistry::instance().renderPrometheus();
             auto response = HttpResponse::newHttpResponse();
             response->setStatusCode(k200OK);
             response->setContentTypeString("text/plain; version=0.0.4");
-            response->setBody(stream.str());
+            response->setBody(std::move(body));
             auto requestId = resolveRequestId(req);
             if (!requestId.empty()) {
                 response->addHeader("X-Request-ID", requestId);
@@ -206,6 +308,7 @@ int main() {
 
     application.run();
     LOG_INFO << "Server stopped.";
+    superapi::core::Tracer::instance().shutdown();
 
     return 0;
 }

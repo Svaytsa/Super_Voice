@@ -32,6 +32,8 @@ add_executable(superapi_server
     src/logging.cpp
     src/providers.cpp
     src/middleware/request_id.cpp
+    src/core/Metrics.cpp
+    src/core/Tracing.cpp
     ${PROJECT_HEADERS}
 )
 

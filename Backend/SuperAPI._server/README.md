@@ -104,6 +104,61 @@ The server listens on the configured host and port. Base endpoints:
 - `GET /version`
 - `GET /metrics`
 
+## Observability
+
+The service exposes structured logs, Prometheus metrics, and OpenTelemetry traces for every request.
+
+### Logging
+
+- Logs are emitted in JSON with the fields `ts`, `level`, `msg`, `request_id`, `company`, `endpoint`, `status`, and `latency_ms`.
+- Custom redaction patterns can be configured in `config/logging.yaml` under `logging.redact.patterns` in addition to built-in redaction of email addresses, phone numbers, payment card numbers, and API tokens.
+- A `X-Request-ID` header is required on every response and can be supplied by clients to correlate logs.
+
+### Metrics
+
+Metrics are exposed via `/metrics` in Prometheus text format and include per-company/endpoint cardinality for:
+
+- `requests_total` (counter)
+- `errors_total{type="http_4xx"|"http_5xx"|...}`
+- `latency_ms_bucket`, `latency_ms_sum`, `latency_ms_count`
+- `bytes_in`, `bytes_out`
+- `tokens_in`, `tokens_out`
+- `stream_events_total`
+
+Check locally:
+
+```bash
+curl -s http://localhost:8080/metrics
+```
+
+### Tracing
+
+- Incoming requests start an OpenTelemetry span with context extracted from `traceparent` headers; downstream calls can reuse `Tracer::startSpan` to create children.
+- Spans automatically propagate `traceparent` in responses.
+- Traces are exported via OTLP (gRPC/HTTP) using `config/otel.yaml` or the `OTEL_EXPORTER_*` environment variables.
+
+### Local Prometheus + Grafana stack
+
+An optional docker-compose overlay is provided to run Prometheus, Grafana, and an OpenTelemetry Collector locally:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.observability.yml up
+```
+
+- Prometheus: <http://localhost:9090>
+- Grafana: <http://localhost:3000> (credentials `admin` / `admin` by default)
+- OTLP receiver: `http://localhost:4317` and `http://localhost:4318`
+
+Grafana ships without pre-provisioned dashboards; add Prometheus as a data source pointed at `http://prometheus:9090` inside the compose network or `http://localhost:9090` from the host.
+
+### High-concurrency smoke test
+
+Use `hey` or a similar tool to verify throughput and latency while metrics and traces remain stable:
+
+```bash
+hey -z 30s -c 50 http://localhost:8080/health
+```
+
 ### Docker
 
 Build and run the service with Docker:
@@ -120,6 +175,7 @@ Key configuration files:
 - `config/server.yaml` – Drogon server configuration defaults
 - `config/logging.yaml` – Logging preferences and severity
 - `config/otel.yaml` – OpenTelemetry exporter placeholders
+- `config/observability/*` – Local Prometheus and OpenTelemetry Collector configs
 - `config/providers.yaml` – External provider credentials and options
 
 ## Testing
