@@ -1,0 +1,12 @@
+providers:
+  service_alpha:
+    api_key: ${SERVICE_ALPHA_API_KEY:-}
+    endpoint: https://api.alpha.example.com
+  service_beta:
+    client_id: ${SERVICE_BETA_CLIENT_ID:-}
+    client_secret: ${SERVICE_BETA_CLIENT_SECRET:-}
+    token_url: https://auth.beta.example.com/oauth/token
+  service_gamma:
+    webhook_secret: ${SERVICE_GAMMA_WEBHOOK_SECRET:-}
+    callbacks:
+      - https://hooks.gamma.example.com/events

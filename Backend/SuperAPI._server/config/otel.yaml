@@ -1,0 +1,12 @@
+otel:
+  service:
+    name: superapi-server
+    namespace: superapi
+    version: 0.1.0
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}
+      headers: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      insecure: false
+  resources:
+    environment: development

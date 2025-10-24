@@ -1,0 +1,7 @@
+logging:
+  level: info
+  json: true
+  stdout: true
+  file:
+    enabled: false
+    path: ./logs/superapi.log
