@@ -1,0 +1,52 @@
+openapi: 3.1.0
+info:
+  title: Super Voice xAI Namespace
+  version: '0.1.0'
+  description: Delegated contract for xAI endpoints in the Super Voice SuperAPI.
+servers:
+  - url: https://api.supervoice.dev
+paths:
+  /xai/chat/completions:
+    $ref: ../superapi.openapi.yaml#/paths/~1xai~1chat~1completions
+  /xai/embeddings:
+    $ref: ../superapi.openapi.yaml#/paths/~1xai~1embeddings
+  /xai/images/generations:
+    $ref: ../superapi.openapi.yaml#/paths/~1xai~1images~1generations
+  /xai/audio/transcriptions:
+    $ref: ../superapi.openapi.yaml#/paths/~1xai~1audio~1transcriptions
+  /xai/audio/speech:
+    $ref: ../superapi.openapi.yaml#/paths/~1xai~1audio~1speech
+  /xai/video/generations:
+    $ref: ../superapi.openapi.yaml#/paths/~1xai~1video~1generations
+  /xai/models:
+    $ref: ../superapi.openapi.yaml#/paths/~1xai~1models
+  /xai/batches:
+    $ref: ../superapi.openapi.yaml#/paths/~1xai~1batches
+  /xai/jobs/{id}:
+    $ref: ../superapi.openapi.yaml#/paths/~1xai~1jobs~1{id}
+components:
+  schemas:
+    ChatCompletionRequest:
+      $ref: ../schemas/chat_request.json
+    ChatCompletionResponse:
+      $ref: ../schemas/chat_response.json
+    EmbeddingsRequest:
+      $ref: ../schemas/embeddings_request.json
+    EmbeddingsResponse:
+      $ref: ../schemas/embeddings_response.json
+    ImageGenerationRequest:
+      $ref: ../schemas/image_request.json
+    TextToSpeechRequest:
+      $ref: ../schemas/tts_request.json
+    AudioTranscriptionRequest:
+      $ref: ../schemas/asr_request.json
+    ErrorResponse:
+      $ref: ../schemas/error.json
+  responses:
+    ErrorResponse:
+      $ref: ../superapi.openapi.yaml#/components/responses/ErrorResponse
+  parameters:
+    XVendorHeader:
+      $ref: ../superapi.openapi.yaml#/components/parameters/XVendorHeader
+    VendorQuery:
+      $ref: ../superapi.openapi.yaml#/components/parameters/VendorQuery

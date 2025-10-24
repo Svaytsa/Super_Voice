@@ -1,0 +1,32 @@
+{
+  "$id": "https://superapi.supervoice.dev/schemas/tts_request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TextToSpeechRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["model", "input"],
+  "properties": {
+    "model": {
+      "type": "string"
+    },
+    "input": {
+      "type": "string"
+    },
+    "voice": {
+      "type": "string"
+    },
+    "format": {
+      "type": "string",
+      "enum": ["mp3", "wav", "ogg", "flac"]
+    },
+    "speed": {
+      "type": "number",
+      "minimum": 0.25,
+      "maximum": 4
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "$id": "https://superapi.supervoice.dev/schemas/image_request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImageGenerationRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["model", "prompt"],
+  "properties": {
+    "model": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "size": {
+      "type": "string",
+      "enum": ["256x256", "512x512", "1024x1024", "2048x2048"]
+    },
+    "n": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10
+    },
+    "response_format": {
+      "type": "string",
+      "enum": ["url", "b64_json"]
+    },
+    "user": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

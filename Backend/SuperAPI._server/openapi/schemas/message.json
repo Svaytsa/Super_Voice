@@ -1,0 +1,65 @@
+{
+  "$id": "https://superapi.supervoice.dev/schemas/message.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Message",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["role"],
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "system",
+        "user",
+        "assistant",
+        "tool",
+        "function"
+      ]
+    },
+    "content": {
+      "description": "Message payload which may be a string, structured parts, or multimodal references.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "image_url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "audio_url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "data": {}
+            },
+            "additionalProperties": true
+          }
+        }
+      ]
+    },
+    "name": {
+      "type": "string",
+      "description": "Name of the tool or function for function-call style requests."
+    },
+    "tool_call_id": {
+      "type": "string",
+      "description": "Identifier of the tool call that produced this message."
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

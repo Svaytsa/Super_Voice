@@ -1,0 +1,38 @@
+{
+  "$id": "https://superapi.supervoice.dev/schemas/embeddings_request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmbeddingsRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["model", "input"],
+  "properties": {
+    "model": {
+      "type": "string"
+    },
+    "input": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      ]
+    },
+    "encoding_format": {
+      "type": "string",
+      "enum": ["float", "base64"]
+    },
+    "user": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

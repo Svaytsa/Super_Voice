@@ -10,6 +10,65 @@ SuperAPI._server is a production-ready Drogon-based HTTP service scaffolded with
 - Request ID middleware scaffold for per-request correlation
 - Ready-to-extend Docker and docker-compose setup
 
+## API Overview
+
+The SuperAPI contract publishes OpenAI-aligned request and response envelopes while enforcing
+strict vendor namespacing. Each provider is addressed through a fixed prefix—there is no
+auto-routing or provider inference. Current namespaces:
+
+- `/openai/...`
+- `/anphropic/...`
+- `/xai/...` (shared by Grok and Zhipu)
+- `/perplexety/...`
+- `/lama/...`
+- `/vertex/...`
+- `/gemini/...`
+- `/huggingface/...`
+- `/openrouter/...`
+- `/agentrouter/...`
+- `/deepseek/...`
+- `/qwen/...`
+- `/minimax/...`
+
+Each namespace exposes unified endpoints for chat completions, embeddings, image/video
+generation, speech synthesis, audio transcription, model catalog, batch ingestion, and job
+inspection. Streaming is available via `text/event-stream`, with equivalent WebSocket event
+envelopes (`delta`, `tool_call`, `error`, `done`).
+
+> **xAI & Zhipu routing**: The `/xai/...` namespace is shared. Clients **must** declare the
+> target vendor using either the required `vendor={grok|zhipu}` query parameter or the
+> `X-Vendor: grok|zhipu` header. Requests lacking an explicit selector are rejected; the
+> platform never guesses a provider.
+
+### Contract artifacts
+
+Generated OpenAPI documents and JSON Schemas live under `openapi/`. A unified
+`superapi.openapi.yaml` aggregates every namespace, and per-vendor overlays exist in
+`openapi/companies/*.yaml`. Canonical schema definitions reside in `openapi/schemas/` and are
+referenced by every specification.
+
+### Validating the artifacts
+
+Use the following commands from the repository root to lint the specifications and compile
+the JSON Schemas:
+
+```bash
+# OpenAPI validation (lint + structural validation)
+npx speccy lint Backend/SuperAPI._server/openapi/superapi.openapi.yaml
+npx @openapitools/openapi-generator-cli validate \
+  -i Backend/SuperAPI._server/openapi/superapi.openapi.yaml
+
+# Validate each per-company contract
+for file in Backend/SuperAPI._server/openapi/companies/*.yaml; do
+  npx speccy lint "$file"
+done
+
+# Compile every JSON Schema with AJV (draft 2020-12)
+for schema in Backend/SuperAPI._server/openapi/schemas/*.json; do
+  npx ajv-cli compile --spec=draft2020 -s "$schema"
+done
+```
+
 ## Getting Started
 
 ### Prerequisites

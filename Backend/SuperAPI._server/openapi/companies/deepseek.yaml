@@ -1,0 +1,52 @@
+openapi: 3.1.0
+info:
+  title: Super Voice DeepSeek Namespace
+  version: '0.1.0'
+  description: Delegated contract for DeepSeek endpoints in the Super Voice SuperAPI.
+servers:
+  - url: https://api.supervoice.dev
+paths:
+  /deepseek/chat/completions:
+    $ref: ../superapi.openapi.yaml#/paths/~1deepseek~1chat~1completions
+  /deepseek/embeddings:
+    $ref: ../superapi.openapi.yaml#/paths/~1deepseek~1embeddings
+  /deepseek/images/generations:
+    $ref: ../superapi.openapi.yaml#/paths/~1deepseek~1images~1generations
+  /deepseek/audio/transcriptions:
+    $ref: ../superapi.openapi.yaml#/paths/~1deepseek~1audio~1transcriptions
+  /deepseek/audio/speech:
+    $ref: ../superapi.openapi.yaml#/paths/~1deepseek~1audio~1speech
+  /deepseek/video/generations:
+    $ref: ../superapi.openapi.yaml#/paths/~1deepseek~1video~1generations
+  /deepseek/models:
+    $ref: ../superapi.openapi.yaml#/paths/~1deepseek~1models
+  /deepseek/batches:
+    $ref: ../superapi.openapi.yaml#/paths/~1deepseek~1batches
+  /deepseek/jobs/{id}:
+    $ref: ../superapi.openapi.yaml#/paths/~1deepseek~1jobs~1{id}
+components:
+  schemas:
+    ChatCompletionRequest:
+      $ref: ../schemas/chat_request.json
+    ChatCompletionResponse:
+      $ref: ../schemas/chat_response.json
+    EmbeddingsRequest:
+      $ref: ../schemas/embeddings_request.json
+    EmbeddingsResponse:
+      $ref: ../schemas/embeddings_response.json
+    ImageGenerationRequest:
+      $ref: ../schemas/image_request.json
+    TextToSpeechRequest:
+      $ref: ../schemas/tts_request.json
+    AudioTranscriptionRequest:
+      $ref: ../schemas/asr_request.json
+    ErrorResponse:
+      $ref: ../schemas/error.json
+  responses:
+    ErrorResponse:
+      $ref: ../superapi.openapi.yaml#/components/responses/ErrorResponse
+  parameters:
+    XVendorHeader:
+      $ref: ../superapi.openapi.yaml#/components/parameters/XVendorHeader
+    VendorQuery:
+      $ref: ../superapi.openapi.yaml#/components/parameters/VendorQuery

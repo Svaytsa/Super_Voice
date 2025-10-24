@@ -1,0 +1,52 @@
+openapi: 3.1.0
+info:
+  title: Super Voice Agent Router (CN) Namespace
+  version: '0.1.0'
+  description: Delegated contract for Agent Router (CN) endpoints in the Super Voice SuperAPI.
+servers:
+  - url: https://api.supervoice.dev
+paths:
+  /agentrouter/chat/completions:
+    $ref: ../superapi.openapi.yaml#/paths/~1agentrouter~1chat~1completions
+  /agentrouter/embeddings:
+    $ref: ../superapi.openapi.yaml#/paths/~1agentrouter~1embeddings
+  /agentrouter/images/generations:
+    $ref: ../superapi.openapi.yaml#/paths/~1agentrouter~1images~1generations
+  /agentrouter/audio/transcriptions:
+    $ref: ../superapi.openapi.yaml#/paths/~1agentrouter~1audio~1transcriptions
+  /agentrouter/audio/speech:
+    $ref: ../superapi.openapi.yaml#/paths/~1agentrouter~1audio~1speech
+  /agentrouter/video/generations:
+    $ref: ../superapi.openapi.yaml#/paths/~1agentrouter~1video~1generations
+  /agentrouter/models:
+    $ref: ../superapi.openapi.yaml#/paths/~1agentrouter~1models
+  /agentrouter/batches:
+    $ref: ../superapi.openapi.yaml#/paths/~1agentrouter~1batches
+  /agentrouter/jobs/{id}:
+    $ref: ../superapi.openapi.yaml#/paths/~1agentrouter~1jobs~1{id}
+components:
+  schemas:
+    ChatCompletionRequest:
+      $ref: ../schemas/chat_request.json
+    ChatCompletionResponse:
+      $ref: ../schemas/chat_response.json
+    EmbeddingsRequest:
+      $ref: ../schemas/embeddings_request.json
+    EmbeddingsResponse:
+      $ref: ../schemas/embeddings_response.json
+    ImageGenerationRequest:
+      $ref: ../schemas/image_request.json
+    TextToSpeechRequest:
+      $ref: ../schemas/tts_request.json
+    AudioTranscriptionRequest:
+      $ref: ../schemas/asr_request.json
+    ErrorResponse:
+      $ref: ../schemas/error.json
+  responses:
+    ErrorResponse:
+      $ref: ../superapi.openapi.yaml#/components/responses/ErrorResponse
+  parameters:
+    XVendorHeader:
+      $ref: ../superapi.openapi.yaml#/components/parameters/XVendorHeader
+    VendorQuery:
+      $ref: ../superapi.openapi.yaml#/components/parameters/VendorQuery

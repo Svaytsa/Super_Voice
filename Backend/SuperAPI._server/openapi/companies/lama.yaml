@@ -1,0 +1,52 @@
+openapi: 3.1.0
+info:
+  title: Super Voice LaMA Namespace
+  version: '0.1.0'
+  description: Delegated contract for LaMA endpoints in the Super Voice SuperAPI.
+servers:
+  - url: https://api.supervoice.dev
+paths:
+  /lama/chat/completions:
+    $ref: ../superapi.openapi.yaml#/paths/~1lama~1chat~1completions
+  /lama/embeddings:
+    $ref: ../superapi.openapi.yaml#/paths/~1lama~1embeddings
+  /lama/images/generations:
+    $ref: ../superapi.openapi.yaml#/paths/~1lama~1images~1generations
+  /lama/audio/transcriptions:
+    $ref: ../superapi.openapi.yaml#/paths/~1lama~1audio~1transcriptions
+  /lama/audio/speech:
+    $ref: ../superapi.openapi.yaml#/paths/~1lama~1audio~1speech
+  /lama/video/generations:
+    $ref: ../superapi.openapi.yaml#/paths/~1lama~1video~1generations
+  /lama/models:
+    $ref: ../superapi.openapi.yaml#/paths/~1lama~1models
+  /lama/batches:
+    $ref: ../superapi.openapi.yaml#/paths/~1lama~1batches
+  /lama/jobs/{id}:
+    $ref: ../superapi.openapi.yaml#/paths/~1lama~1jobs~1{id}
+components:
+  schemas:
+    ChatCompletionRequest:
+      $ref: ../schemas/chat_request.json
+    ChatCompletionResponse:
+      $ref: ../schemas/chat_response.json
+    EmbeddingsRequest:
+      $ref: ../schemas/embeddings_request.json
+    EmbeddingsResponse:
+      $ref: ../schemas/embeddings_response.json
+    ImageGenerationRequest:
+      $ref: ../schemas/image_request.json
+    TextToSpeechRequest:
+      $ref: ../schemas/tts_request.json
+    AudioTranscriptionRequest:
+      $ref: ../schemas/asr_request.json
+    ErrorResponse:
+      $ref: ../schemas/error.json
+  responses:
+    ErrorResponse:
+      $ref: ../superapi.openapi.yaml#/components/responses/ErrorResponse
+  parameters:
+    XVendorHeader:
+      $ref: ../superapi.openapi.yaml#/components/parameters/XVendorHeader
+    VendorQuery:
+      $ref: ../superapi.openapi.yaml#/components/parameters/VendorQuery

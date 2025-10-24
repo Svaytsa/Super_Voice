@@ -1,0 +1,27 @@
+{
+  "$id": "https://superapi.supervoice.dev/schemas/tool.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tool",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "name"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["function", "webhook", "realtime"]
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "parameters": {
+      "$ref": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}
