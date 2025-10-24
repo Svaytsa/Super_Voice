@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  superapi:
+    build: .
+    image: superapi_server:latest
+    ports:
+      - "8080:8080"
+    environment:
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8080}
+      DRY_RUN: ${DRY_RUN:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SERVICE_ALPHA_API_KEY: ${SERVICE_ALPHA_API_KEY:-}
+      SERVICE_BETA_CLIENT_ID: ${SERVICE_BETA_CLIENT_ID:-}
+      SERVICE_BETA_CLIENT_SECRET: ${SERVICE_BETA_CLIENT_SECRET:-}
+      SERVICE_GAMMA_WEBHOOK_SECRET: ${SERVICE_GAMMA_WEBHOOK_SECRET:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+    volumes:
+      - ./config:/opt/superapi/config:ro
+      - ./.env:/opt/superapi/.env:ro
+    restart: unless-stopped

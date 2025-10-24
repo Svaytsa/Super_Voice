@@ -1,0 +1,20 @@
+app:
+  threads: 0  # Use hardware concurrency
+  log_path: "./logs"
+  keepalive_requests: 0
+  use_gzip: true
+  enable_server_header: false
+  enable_date_header: true
+  dry_run: false
+listeners:
+  - address: 0.0.0.0
+    port: 8080
+    reuse_port: true
+    use_ssl: false
+    https: false
+    cert: ""
+    key: ""
+ssl:
+  use_tls: false
+plugins: []
+filters: []

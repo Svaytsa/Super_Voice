@@ -1,0 +1,28 @@
+# Build artifacts
+/build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.o
+*.obj
+*.pdb
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE files
+.vscode/
+.idea/
+*.user
+
+# Environment files
+.env
+
+# Runtime directories
+uploads/
+
+# Misc
+*.log
+.DS_Store
