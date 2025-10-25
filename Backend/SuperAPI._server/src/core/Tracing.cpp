@@ -444,23 +444,64 @@ void Span::addEvent(const std::string &name,
     events_.push_back(Event{.name = name, .time = std::chrono::system_clock::now(), .attributes = attributes});
 }
 
+void Span::setStatus(int statusCode, std::string message) {
+    std::scoped_lock lock(mutex_);
+    if (ended_) {
+        return;
+    }
+    if (statusCode != 0) {
+        httpStatus_ = statusCode;
+        if (statusCode >= 400) {
+            otelStatus_ = 2;
+        } else if (statusCode > 0) {
+            otelStatus_ = std::max(otelStatus_, 1);
+        } else {
+            otelStatus_ = 0;
+        }
+        attributes_["http.status_code"] = static_cast<std::int64_t>(statusCode);
+    }
+    if (!message.empty()) {
+        statusMessage_ = std::move(message);
+    }
+}
+
+void Span::recordException(const std::string &type, const std::string &message) {
+    std::unordered_map<std::string, AttributeValue> attributes;
+    if (!type.empty()) {
+        attributes.emplace("exception.type", type);
+    }
+    if (!message.empty()) {
+        attributes.emplace("exception.message", message);
+    }
+    addEvent("exception", attributes);
+    if (!message.empty() && httpStatus_ == 0) {
+        setStatus(500, message);
+    }
+}
+
 void Span::end(int statusCode, const std::string &message) {
     std::unique_lock lock(mutex_);
     if (ended_) {
         return;
     }
     ended_ = true;
-    httpStatus_ = statusCode;
-    if (statusCode >= 400) {
+    if (statusCode != 0) {
+        httpStatus_ = statusCode;
+    }
+    if (httpStatus_ >= 400) {
         otelStatus_ = 2;
-    } else if (statusCode > 0) {
-        otelStatus_ = 1;
+    } else if (httpStatus_ > 0) {
+        otelStatus_ = std::max(otelStatus_, 1);
     } else {
         otelStatus_ = 0;
     }
-    statusMessage_ = message;
-    if (statusCode > 0) {
-        attributes_["http.status_code"] = static_cast<std::int64_t>(statusCode);
+    if (!message.empty()) {
+        statusMessage_ = message;
+    } else if (statusMessage_.empty() && otelStatus_ == 2) {
+        statusMessage_ = "error";
+    }
+    if (httpStatus_ > 0) {
+        attributes_["http.status_code"] = static_cast<std::int64_t>(httpStatus_);
     }
     endTime_ = std::chrono::system_clock::now();
     lock.unlock();

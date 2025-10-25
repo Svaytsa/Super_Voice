@@ -225,7 +225,12 @@ int main() {
                 span->setAttribute("request.latency_ms", metricsContext->latencyMs());
             }
             span->setAttribute("http.response_content_length", static_cast<std::int64_t>(bytesOut));
-            span->end(static_cast<int>(statusCode), statusCode >= 400 ? "http_error" : "");
+            if (statusCode >= 400) {
+                span->setStatus(static_cast<int>(statusCode), "http_error");
+            } else {
+                span->setStatus(static_cast<int>(statusCode));
+            }
+            span->end();
             if (resp) {
                 resp->addHeader("traceparent", superapi::core::Tracer::instance().buildTraceparent(span->context()));
             }

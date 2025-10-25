@@ -13,6 +13,7 @@
 #include <cctype>
 #include <cstdint>
 #include <exception>
+#include <memory>
 #include <unordered_map>
 
 namespace superapi::middleware {
@@ -133,6 +134,8 @@ void RequestIdMiddleware::doFilter(const drogon::HttpRequestPtr &req,
     logContext.endpoint = endpoint;
     logContext.hasRequest = true;
     superapi::setLogContext(logContext);
+    auto logScope = std::make_shared<superapi::ScopedLogContext>(logContext);
+    req->attributes()->insert("observability.log_scope", logScope);
 
     (void)fcb;
     fccb();

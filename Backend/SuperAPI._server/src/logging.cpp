@@ -19,6 +19,7 @@
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace superapi {
@@ -88,13 +89,16 @@ std::string extractLevel(std::string_view message) {
     return level;
 }
 
-void emitLogPayload(const nlohmann::json &payload) {
-    const std::string serialized = payload.dump();
+void emitLogPayload(const std::string &serialized) {
     std::lock_guard<std::mutex> lock(logMutex);
     std::cout << serialized << std::endl;
     if (fileSink && fileSink->is_open()) {
         (*fileSink) << serialized << std::endl;
     }
+}
+
+void emitLogPayload(const nlohmann::json &payload) {
+    emitLogPayload(payload.dump());
 }
 
 }  // namespace
@@ -106,6 +110,7 @@ void initializeLogging(const std::string &level, const YAML::Node &loggingConfig
 
     bool enableStdout = true;
     bool enableFile = false;
+    bool jsonLogging = true;
     std::filesystem::path logPath;
 
     redactionRules.clear();
@@ -116,6 +121,9 @@ void initializeLogging(const std::string &level, const YAML::Node &loggingConfig
 
     if (loggingConfig) {
         if (auto logging = loggingConfig["logging"]; logging) {
+            if (auto jsonNode = logging["json"]; jsonNode) {
+                jsonLogging = jsonNode.as<bool>(jsonLogging);
+            }
             if (auto stdoutNode = logging["stdout"]; stdoutNode) {
                 enableStdout = stdoutNode.as<bool>(enableStdout);
             }
@@ -153,7 +161,7 @@ void initializeLogging(const std::string &level, const YAML::Node &loggingConfig
     }
 
     Logger::setOutputFunction(
-        [](const char *msg, const uint64_t len) {
+        [jsonLogging](const char *msg, const uint64_t len) {
             std::string_view view(msg, len);
             if (!view.empty() && view.back() == '\n') {
                 view.remove_suffix(1);
@@ -163,10 +171,35 @@ void initializeLogging(const std::string &level, const YAML::Node &loggingConfig
             auto level = extractLevel(view);
             auto context = currentLogContext();
 
+            if (!jsonLogging) {
+                std::ostringstream line;
+                line << isoTimestampUtc() << ' ' << level;
+                if (!context.requestId.empty()) {
+                    line << " request_id=" << context.requestId;
+                }
+                if (!context.company.empty()) {
+                    line << " company=" << context.company;
+                }
+                if (!context.endpoint.empty()) {
+                    line << " endpoint=" << context.endpoint;
+                }
+                if (context.status != 0) {
+                    line << " status=" << context.status;
+                }
+                if (context.latencyMs > 0.0) {
+                    line << " latency_ms=" << context.latencyMs;
+                }
+                line << " msg=\"" << sanitized << "\"";
+                emitLogPayload(line.str());
+                return;
+            }
+
             nlohmann::json payload;
             payload["ts"] = isoTimestampUtc();
+            payload["timestamp"] = payload["ts"];
             payload["level"] = level;
             payload["msg"] = sanitized;
+            payload["message"] = sanitized;
             if (context.requestId.empty()) {
                 payload["request_id"] = nullptr;
             } else {
@@ -208,7 +241,7 @@ void initializeLogging(const std::string &level, const YAML::Node &loggingConfig
 
 void setLogContext(const LogContext &context) {
     threadLogContext = context;
-    threadLogContext.hasRequest = true;
+    threadLogContext.hasRequest = context.hasRequest || !context.requestId.empty();
 }
 
 void updateLogContext(const LogContext &context) {
@@ -244,6 +277,34 @@ std::string redactMessage(std::string_view message) {
         sanitized = std::regex_replace(sanitized, rule, "[REDACTED]");
     }
     return sanitized;
+}
+
+ScopedLogContext::ScopedLogContext(LogContext context) : previous_(currentLogContext()) {
+    setLogContext(context);
+    active_ = true;
+}
+
+ScopedLogContext::ScopedLogContext(ScopedLogContext &&other) noexcept
+    : active_(other.active_), previous_(std::move(other.previous_)) {
+    other.active_ = false;
+}
+
+ScopedLogContext &ScopedLogContext::operator=(ScopedLogContext &&other) noexcept {
+    if (this != &other) {
+        if (active_) {
+            threadLogContext = previous_;
+        }
+        active_ = other.active_;
+        previous_ = std::move(other.previous_);
+        other.active_ = false;
+    }
+    return *this;
+}
+
+ScopedLogContext::~ScopedLogContext() {
+    if (active_) {
+        threadLogContext = previous_;
+    }
 }
 
 }  // namespace superapi

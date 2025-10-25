@@ -85,6 +85,8 @@ class Span : public std::enable_shared_from_this<Span> {
     void setAttribute(const std::string &key, const AttributeValue &value);
     void addEvent(const std::string &name,
                   const std::unordered_map<std::string, AttributeValue> &attributes = {});
+    void setStatus(int statusCode, std::string message = "");
+    void recordException(const std::string &type, const std::string &message);
     void end(int statusCode = 0, const std::string &message = "");
 
     [[nodiscard]] bool ended() const { return ended_; }
