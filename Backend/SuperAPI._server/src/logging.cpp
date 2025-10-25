@@ -9,21 +9,26 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <cctype>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <system_error>
-#include <cctype>
+#include <vector>
 
 namespace superapi {
 namespace {
 
 std::mutex logMutex;
 std::unique_ptr<std::ofstream> fileSink;
+std::vector<std::regex> redactionRules;
+
+thread_local LogContext threadLogContext{};
 
 std::string isoTimestampUtc() {
     using namespace std::chrono;
@@ -103,6 +108,12 @@ void initializeLogging(const std::string &level, const YAML::Node &loggingConfig
     bool enableFile = false;
     std::filesystem::path logPath;
 
+    redactionRules.clear();
+    redactionRules.emplace_back(R"(([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}))", std::regex::icase);
+    redactionRules.emplace_back(R"((?:(?:\+?\d{1,3})?[-.\s]?)?(?:\d{3}[-.\s]?){2}\d{4})");
+    redactionRules.emplace_back("(?:\\b\\d{4}[- ]?){3}\\d{4}\\b");
+    redactionRules.emplace_back(R"((?:(?:api[_-]?key|token|secret|authorization))[:=][^\s]+)", std::regex::icase);
+
     if (loggingConfig) {
         if (auto logging = loggingConfig["logging"]; logging) {
             if (auto stdoutNode = logging["stdout"]; stdoutNode) {
@@ -122,6 +133,17 @@ void initializeLogging(const std::string &level, const YAML::Node &loggingConfig
                     }
                 }
             }
+            if (auto redactNode = logging["redact"]; redactNode) {
+                if (auto patterns = redactNode["patterns"]; patterns && patterns.IsSequence()) {
+                    for (const auto &pattern : patterns) {
+                        try {
+                            redactionRules.emplace_back(pattern.as<std::string>());
+                        } catch (const std::regex_error &) {
+                            LOG_WARN << "Invalid redaction regex ignored: " << pattern.as<std::string>("");
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -137,11 +159,39 @@ void initializeLogging(const std::string &level, const YAML::Node &loggingConfig
                 view.remove_suffix(1);
             }
 
-            nlohmann::json payload = {
-                {"timestamp", isoTimestampUtc()},
-                {"level", extractLevel(view)},
-                {"message", std::string(view)}
-            };
+            auto sanitized = redactMessage(view);
+            auto level = extractLevel(view);
+            auto context = currentLogContext();
+
+            nlohmann::json payload;
+            payload["ts"] = isoTimestampUtc();
+            payload["level"] = level;
+            payload["msg"] = sanitized;
+            if (context.requestId.empty()) {
+                payload["request_id"] = nullptr;
+            } else {
+                payload["request_id"] = context.requestId;
+            }
+            if (context.company.empty()) {
+                payload["company"] = nullptr;
+            } else {
+                payload["company"] = context.company;
+            }
+            if (context.endpoint.empty()) {
+                payload["endpoint"] = nullptr;
+            } else {
+                payload["endpoint"] = context.endpoint;
+            }
+            if (context.status != 0) {
+                payload["status"] = context.status;
+            } else {
+                payload["status"] = nullptr;
+            }
+            if (context.latencyMs > 0.0) {
+                payload["latency_ms"] = context.latencyMs;
+            } else {
+                payload["latency_ms"] = nullptr;
+            }
 
             emitLogPayload(payload);
         },
@@ -154,6 +204,46 @@ void initializeLogging(const std::string &level, const YAML::Node &loggingConfig
         });
 
     LOG_INFO << "Logging initialized";
+}
+
+void setLogContext(const LogContext &context) {
+    threadLogContext = context;
+    threadLogContext.hasRequest = true;
+}
+
+void updateLogContext(const LogContext &context) {
+    if (!context.requestId.empty()) {
+        threadLogContext.requestId = context.requestId;
+    }
+    if (!context.company.empty()) {
+        threadLogContext.company = context.company;
+    }
+    if (!context.endpoint.empty()) {
+        threadLogContext.endpoint = context.endpoint;
+    }
+    if (context.status != 0) {
+        threadLogContext.status = context.status;
+    }
+    if (context.latencyMs > 0.0) {
+        threadLogContext.latencyMs = context.latencyMs;
+    }
+    threadLogContext.hasRequest = threadLogContext.hasRequest || context.hasRequest || !threadLogContext.requestId.empty();
+}
+
+LogContext currentLogContext() {
+    return threadLogContext;
+}
+
+void clearLogContext() {
+    threadLogContext = LogContext{};
+}
+
+std::string redactMessage(std::string_view message) {
+    std::string sanitized(message);
+    for (const auto &rule : redactionRules) {
+        sanitized = std::regex_replace(sanitized, rule, "[REDACTED]");
+    }
+    return sanitized;
 }
 
 }  // namespace superapi

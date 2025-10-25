@@ -32,6 +32,25 @@ add_executable(superapi_server
     src/logging.cpp
     src/providers.cpp
     src/middleware/request_id.cpp
+    src/middleware/idempotency.cpp
+    src/core/Metrics.cpp
+    src/core/Tracing.cpp
+    src/http/HttpServer.cpp
+    src/http/ChatWebSocket.cpp
+    src/http/CompanyNamespace.cpp
+    src/http/companies/AgentRouter.cpp
+    src/http/companies/Anphropic.cpp
+    src/http/companies/DeepSeek.cpp
+    src/http/companies/Gemini.cpp
+    src/http/companies/HuggingFace.cpp
+    src/http/companies/LaMA.cpp
+    src/http/companies/MiniMax.cpp
+    src/http/companies/OpenAI.cpp
+    src/http/companies/OpenRouter.cpp
+    src/http/companies/Perplexety.cpp
+    src/http/companies/Qwen.cpp
+    src/http/companies/Vertex.cpp
+    src/http/companies/XAI.cpp
     ${PROJECT_HEADERS}
 )
 

@@ -5,3 +5,5 @@ logging:
   file:
     enabled: false
     path: ./logs/superapi.log
+  redact:
+    patterns: []
