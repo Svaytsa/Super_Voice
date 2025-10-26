@@ -5,6 +5,7 @@
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
 #include <yaml-cpp/yaml.h>
+#include <trantor/utils/Logger.h>
 
 #include <algorithm>
 #include <array>

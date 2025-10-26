@@ -72,6 +72,8 @@ class Tracer {
 };
 
 class Span : public std::enable_shared_from_this<Span> {
+    friend class Tracer;
+
   public:
     Span(Tracer &tracer,
          std::string name,

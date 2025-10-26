@@ -228,7 +228,7 @@ int main() {
             }
         }
 
-        LogContext context = currentLogContext();
+        superapi::LogContext context = superapi::currentLogContext();
         context.requestId = requestId;
         if (!company.empty()) {
             context.company = company;
@@ -239,12 +239,14 @@ int main() {
         context.status = static_cast<int>(statusCode);
         context.latencyMs = metricsContext ? metricsContext->latencyMs() : 0.0;
         context.hasRequest = true;
-        updateLogContext(context);
+        superapi::updateLogContext(context);
         LOG_INFO << "request complete";
-        clearLogContext();
+        superapi::clearLogContext();
     });
 
     superapi::validateProviderConfig("config/providers.yaml");
+    superapi::providers::initialize("config/providers.yaml", config.dryRun);
+    superapi::providers::registerRoutes(application);
 
     const std::string version = "0.1.0";
     const auto startTime = std::chrono::system_clock::now();

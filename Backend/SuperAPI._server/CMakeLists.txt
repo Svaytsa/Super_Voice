@@ -31,6 +31,21 @@ add_executable(superapi_server
     src/environment.cpp
     src/logging.cpp
     src/providers.cpp
+    src/providers/HttpProviderBase.cpp
+    src/providers/OpenAIProvider.cpp
+    src/providers/AnthropicProvider.cpp
+    src/providers/XAIProvider.cpp
+    src/providers/PerplexityProvider.cpp
+    src/providers/LamaProvider.cpp
+    src/providers/VertexProvider.cpp
+    src/providers/GeminiProvider.cpp
+    src/providers/HuggingFaceProvider.cpp
+    src/providers/OpenRouterProvider.cpp
+    src/providers/AgentRouterProvider.cpp
+    src/providers/DeepSeekProvider.cpp
+    src/providers/QwenProvider.cpp
+    src/providers/ZhipuProvider.cpp
+    src/providers/MiniMaxProvider.cpp
     src/middleware/request_id.cpp
     src/core/Metrics.cpp
     src/core/Tracing.cpp

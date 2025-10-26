@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <mutex>
 #include <shared_mutex>
 #include <sstream>
 #include <utility>

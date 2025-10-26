@@ -167,9 +167,12 @@ void initializeLogging(const std::string &level, const YAML::Node &loggingConfig
             payload["ts"] = isoTimestampUtc();
             payload["level"] = level;
             payload["msg"] = sanitized;
-            payload["request_id"] = context.requestId.empty() ? nlohmann::json(nullptr) : context.requestId;
-            payload["company"] = context.company.empty() ? nlohmann::json(nullptr) : context.company;
-            payload["endpoint"] = context.endpoint.empty() ? nlohmann::json(nullptr) : context.endpoint;
+            payload["request_id"] = context.requestId.empty() ? nlohmann::json(nullptr)
+                                                              : nlohmann::json(context.requestId);
+            payload["company"] = context.company.empty() ? nlohmann::json(nullptr)
+                                                          : nlohmann::json(context.company);
+            payload["endpoint"] = context.endpoint.empty() ? nlohmann::json(nullptr)
+                                                            : nlohmann::json(context.endpoint);
             payload["status"] = (context.status != 0) ? nlohmann::json(context.status) : nlohmann::json(nullptr);
             payload["latency_ms"] = (context.latencyMs > 0.0) ? nlohmann::json(context.latencyMs) : nlohmann::json(nullptr);
 
