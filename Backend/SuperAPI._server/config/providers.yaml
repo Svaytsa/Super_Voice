@@ -1,12 +1,55 @@
 providers:
-  service_alpha:
-    api_key: ${SERVICE_ALPHA_API_KEY:-}
-    endpoint: https://api.alpha.example.com
-  service_beta:
-    client_id: ${SERVICE_BETA_CLIENT_ID:-}
-    client_secret: ${SERVICE_BETA_CLIENT_SECRET:-}
-    token_url: https://auth.beta.example.com/oauth/token
-  service_gamma:
-    webhook_secret: ${SERVICE_GAMMA_WEBHOOK_SECRET:-}
-    callbacks:
-      - https://hooks.gamma.example.com/events
+  openai:
+    base_url: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+    api_key_env: OPENAI_API_KEY
+    organization_env: OPENAI_ORG_ID
+    default_headers:
+      OpenAI-Beta: responses
+    timeout_ms: 60000
+    connect_timeout_ms: 5000
+    max_retries: 3
+    base_backoff_ms: 200
+    max_backoff_ms: 2000
+    circuit_breaker_threshold: 3
+    circuit_breaker_cooldown_ms: 10000
+  anthropic:
+    base_url: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com/v1}
+    api_key_env: ANTHROPIC_API_KEY
+    default_headers:
+      anthropic-version: '2023-06-01'
+  xai:
+    base_url: ${XAI_BASE_URL:-https://api.x.ai/v1}
+    api_key_env: XAI_API_KEY
+  perplexity:
+    base_url: ${PERPLEXITY_BASE_URL:-https://api.perplexity.ai}
+    api_key_env: PERPLEXITY_API_KEY
+  lama:
+    base_url: ${LAMA_BASE_URL:-https://api.llama.meta.com/v1}
+    api_key_env: LAMA_API_KEY
+  vertex:
+    base_url: ${VERTEX_BASE_URL:-https://generativelanguage.googleapis.com/v1}
+    api_key_env: VERTEX_API_KEY
+  gemini:
+    base_url: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
+    api_key_env: GEMINI_API_KEY
+  huggingface:
+    base_url: ${HUGGINGFACE_BASE_URL:-https://api-inference.huggingface.co/v1}
+    api_key_env: HUGGINGFACE_API_KEY
+  openrouter:
+    base_url: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+    api_key_env: OPENROUTER_API_KEY
+  agentrouter:
+    base_url: ${AGENTROUTER_BASE_URL:-https://api.agentrouter.com/v1}
+    api_key_env: AGENTROUTER_API_KEY
+  deepseek:
+    base_url: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+    api_key_env: DEEPSEEK_API_KEY
+  qwen:
+    base_url: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+    api_key_env: QWEN_API_KEY
+  zhipu:
+    base_url: ${ZHIPU_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
+    api_key_env: ZHIPU_API_KEY
+  minimax:
+    base_url: ${MINIMAX_BASE_URL:-https://api.minimax.chat/v1}
+    api_key_env: MINIMAX_API_KEY

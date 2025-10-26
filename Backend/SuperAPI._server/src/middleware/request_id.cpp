@@ -103,14 +103,18 @@ void RequestIdMiddleware::doFilter(const drogon::HttpRequestPtr &req,
 
     auto &tracer = core::Tracer::instance();
     const auto parentContext = tracer.extractTraceparent(req->getHeader("traceparent"));
-    std::unordered_map<std::string, core::AttributeValue> spanAttributes = {
-        {"http.method", std::string(req->methodString())},
-        {"http.target", req->path()},
-        {"http.scheme", std::string(req->scheme())},
-        {"http.host", req->getHeader("Host")},
-        {"company", company},
-        {"http.user_agent", req->getHeader("User-Agent")},
-    };
+    std::string scheme = "http";
+    if (auto forwarded = req->getHeader("X-Forwarded-Proto"); !forwarded.empty()) {
+        scheme = forwarded;
+    }
+
+    std::unordered_map<std::string, core::AttributeValue> spanAttributes;
+    spanAttributes.emplace("http.method", std::string(req->methodString()));
+    spanAttributes.emplace("http.target", req->path());
+    spanAttributes.emplace("http.scheme", scheme);
+    spanAttributes.emplace("http.host", req->getHeader("Host"));
+    spanAttributes.emplace("company", company);
+    spanAttributes.emplace("http.user_agent", req->getHeader("User-Agent"));
     if (!req->peerAddr().toIp().empty()) {
         spanAttributes.emplace("net.peer.ip", req->peerAddr().toIp());
         spanAttributes.emplace("net.peer.port", static_cast<std::int64_t>(req->peerAddr().toPort()));
