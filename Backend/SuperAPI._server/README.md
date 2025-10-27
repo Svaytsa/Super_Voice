@@ -159,6 +159,30 @@ Use `hey` or a similar tool to verify throughput and latency while metrics and t
 hey -z 30s -c 50 http://localhost:8080/health
 ```
 
+## Streaming & Media
+
+Completion endpoints accept `stream=true`. When `Accept: text/event-stream` (or `transport=sse`) is supplied, SuperAPI returns
+Server-Sent Events with `delta` updates and a final `done` payload; each frame is JSON encoded. Example:
+
+```bash
+curl -N \
+  -H "Accept: text/event-stream" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hello"}],"stream":true}' \
+  http://localhost:18080/openai/chat/completions
+```
+
+WebSocket upgrades use `transport=websocket`. The handshake is currently rejected with a structured `unsupported_transport`
+error while bidirectional frames are under active development; prefer SSE today.
+
+```bash
+wscat -c 'ws://localhost:18080/openai/chat/completions?stream=true&transport=websocket'
+```
+
+Speech recognition accepts JSON or `multipart/form-data` uploads under `/audio/transcriptions`. Attach the audio blob as the
+`file` field alongside optional text inputs. `/audio/speech` streams synthesized audio bytes (`audio/wav` by default, switch to
+MPEG with `Accept: audio/mpeg`) using chunked transfer.
+
 ### Docker
 
 Build and run the service with Docker:

@@ -46,6 +46,8 @@ add_executable(superapi_server
     src/providers/QwenProvider.cpp
     src/providers/ZhipuProvider.cpp
     src/providers/MiniMaxProvider.cpp
+    src/http/SSE.cpp
+    src/http/WebSocket.cpp
     src/middleware/request_id.cpp
     src/core/Metrics.cpp
     src/core/Tracing.cpp
