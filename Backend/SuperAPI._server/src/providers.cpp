@@ -16,6 +16,7 @@
 #include "providers/VertexProvider.hpp"
 #include "providers/XAIProvider.hpp"
 #include "providers/ZhipuProvider.hpp"
+#include "http/SSE.hpp"
 
 #include "superapi/environment.h"
 
@@ -198,6 +199,67 @@ drogon::HttpStatusCode statusFromErrorType(const providers::ProviderError &error
     return drogon::k502BadGateway;
 }
 
+Json::Value usageToJson(const Usage &usage) {
+    Json::Value json(Json::objectValue);
+    json["prompt_tokens"] = static_cast<Json::UInt64>(usage.promptTokens);
+    json["completion_tokens"] = static_cast<Json::UInt64>(usage.completionTokens);
+    json["total_tokens"] = static_cast<Json::UInt64>(usage.totalTokens);
+    json["audio_tokens"] = static_cast<Json::UInt64>(usage.audioTokens);
+    json["cached_tokens"] = static_cast<Json::UInt64>(usage.cachedTokens);
+    if (!usage.note.empty()) {
+        json["note"] = usage.note;
+    }
+    return json;
+}
+
+enum class StreamTransport {
+    None,
+    Sse,
+    WebSocket,
+};
+
+bool parseBoolString(const std::string &value) {
+    if (value.empty()) {
+        return false;
+    }
+    auto lowered = toLower(value);
+    return lowered == "1" || lowered == "true" || lowered == "yes";
+}
+
+StreamTransport resolveTransport(const drogon::HttpRequestPtr &req, Json::Value &payload, bool &streamRequested) {
+    bool queryStream = parseBoolString(req->getParameter("stream"));
+    bool bodyStream = false;
+    if (payload.isMember("stream")) {
+        const auto &node = payload["stream"];
+        if (node.isBool()) {
+            bodyStream = node.asBool();
+        } else if (node.isString()) {
+            bodyStream = parseBoolString(node.asString());
+        }
+        payload.removeMember("stream");
+    }
+    streamRequested = queryStream || bodyStream;
+    if (!streamRequested) {
+        return StreamTransport::None;
+    }
+
+    auto transportParam = toLower(req->getParameter("transport"));
+    if (transportParam == "websocket" || transportParam == "ws") {
+        return StreamTransport::WebSocket;
+    }
+    if (transportParam == "sse" || transportParam == "event-stream") {
+        return StreamTransport::Sse;
+    }
+    auto accept = toLower(req->getHeader("Accept"));
+    if (accept.find("text/event-stream") != std::string::npos) {
+        return StreamTransport::Sse;
+    }
+    if (accept.find("websocket") != std::string::npos) {
+        return StreamTransport::WebSocket;
+    }
+    return StreamTransport::Sse;
+}
+
 void recordUsageMetrics(const drogon::HttpRequestPtr &request, const Usage &usage) {
     if (!request) {
         return;
@@ -243,7 +305,23 @@ void registerEndpoint(drogon::HttpAppFramework &app,
                 return;
             }
 
+            StreamTransport transport = StreamTransport::None;
+            bool streamRequested = false;
+
             auto respondWithError = [&](const providers::ProviderError &error) {
+                if (streamRequested && transport == StreamTransport::Sse) {
+                    auto [response, stream] = http::SseStream::create(req);
+                    response->setStatusCode(statusFromErrorType(error));
+                    if (error.retryAfter > 0.0) {
+                        response->addHeader("Retry-After", std::to_string(error.retryAfter));
+                    }
+                    callback(response);
+                    const auto status = static_cast<int>(statusFromErrorType(error));
+                    stream->sendError(error.code.empty() ? error.type : error.code, error.message, status);
+                    stream->close();
+                    return;
+                }
+
                 auto payload = buildErrorPayload(error);
                 auto response = drogon::HttpResponse::newHttpJsonResponse(payload);
                 response->setStatusCode(statusFromErrorType(error));
@@ -255,6 +333,24 @@ void registerEndpoint(drogon::HttpAppFramework &app,
 
             auto respondWithPayload = [&](const Json::Value &payload, const Usage &usage, const std::string &providerRequestId) {
                 recordUsageMetrics(req, usage);
+                if (streamRequested && transport == StreamTransport::Sse) {
+                    auto [response, stream] = http::SseStream::create(req);
+                    if (!providerRequestId.empty()) {
+                        response->addHeader("X-Provider-Request-ID", providerRequestId);
+                    }
+                    callback(response);
+                    Json::Value delta(Json::objectValue);
+                    delta["data"] = payload;
+                    stream->sendJsonEvent("delta", delta);
+                    Json::Value done(Json::objectValue);
+                    done["usage"] = usageToJson(usage);
+                    if (!providerRequestId.empty()) {
+                        done["provider_request_id"] = providerRequestId;
+                    }
+                    stream->sendDone(done);
+                    return;
+                }
+
                 auto response = drogon::HttpResponse::newHttpJsonResponse(payload);
                 response->setStatusCode(drogon::k200OK);
                 if (!providerRequestId.empty()) {
@@ -313,6 +409,22 @@ void registerEndpoint(drogon::HttpAppFramework &app,
             }
 
             Json::Value payload = *jsonBody;
+            transport = resolveTransport(req, payload, streamRequested);
+            if (streamRequested && transport == StreamTransport::WebSocket) {
+                providers::ProviderError error{
+                    .type = "validation_error",
+                    .message = "WebSocket streaming transport is not supported on this endpoint.",
+                    .provider = providerKey,
+                    .code = "unsupported_transport",
+                    .requestId = context.requestId,
+                    .retryAfter = 0.0,
+                };
+                auto payload = buildErrorPayload(error);
+                auto response = drogon::HttpResponse::newHttpJsonResponse(payload);
+                response->setStatusCode(drogon::k400BadRequest);
+                callback(response);
+                return;
+            }
 
             switch (operation) {
                 case ProviderOperation::Chat: {
