@@ -144,8 +144,29 @@ curl \
   http://localhost:8080/openai/chat/completions
 ```
 
-Each SSE event mirrors the OpenAI `delta` schema and terminates with a `done` event. WebSocket
-endpoints emit the same payloads when negotiated.
+Each SSE event mirrors the OpenAI `delta` schema and terminates with a `done` event.
+
+> **Note**
+> WebSocket streaming transport is not yet available. Requests that negotiate
+> `transport=websocket` are rejected with a validation error so clients can
+> gracefully fall back to SSE.
+
+To confirm the behaviour, try forcing the unsupported transport:
+
+```bash
+curl \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "user", "content": "Hello from SuperAPI"}],
+        "stream": true
+      }' \
+  "http://localhost:8080/openai/chat/completions?transport=websocket"
+```
+
+The server responds with HTTP 400 and a JSON payload describing that WebSocket
+transport is not supported.
 
 ## Observability stack
 
