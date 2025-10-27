@@ -37,6 +37,14 @@ cmake --build build --target test  # optional: run unit tests
 ./build/superapi_server
 ```
 
+### Run unit tests independently
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target superapi_tests
+ctest --test-dir build --output-on-failure
+```
+
 The server listens on the configured host and port (default `0.0.0.0:8080`). Base endpoints:
 
 - `GET /health`

@@ -83,6 +83,8 @@ class HttpProviderBase : public IProvider {
     virtual Json::Value transformResponse(ProviderOperation operation, const Json::Value &payload) const;
     virtual void augmentHeaders(cpr::Header &header) const;
 
+    cpr::Header buildHeaders(const std::string &apiKey, const RequestContext &context) const;
+
    private:
     struct CircuitBreakerState {
         std::size_t failures{0};
@@ -103,7 +105,6 @@ class HttpProviderBase : public IProvider {
 
     std::string buildUrl(ProviderOperation operation, const std::string &resourceId) const;
     std::string resolvePath(ProviderOperation operation, const std::string &resourceId) const;
-    cpr::Header buildHeaders(const std::string &apiKey, const RequestContext &context) const;
     ProviderResult<JsonOperationResult> makeCircuitOpenError(const RequestContext &context) const;
     std::string extractRequestId(const cpr::Response &response) const;
     double parseRetryAfter(const cpr::Response &response) const;
