@@ -75,4 +75,5 @@ target_compile_definitions(superapi_server
 
 install(TARGETS superapi_server RUNTIME DESTINATION bin)
 
+enable_testing()
 add_subdirectory(tests)
